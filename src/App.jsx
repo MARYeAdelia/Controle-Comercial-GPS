@@ -767,6 +767,12 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
   const ativs = data.filter(r => r.isUltima);
   const revs  = data.filter(r => r.isRevisao);
 
+  // Opções de filtro derivadas dos dados
+  const mesesDisp   = ORDEM_MES.filter(m => data.some(r => r.mes === m));
+  const semanasDisp = [...new Set(data.map(r=>r.semana).filter(Boolean))].sort();
+  const escoposDisp = [...new Set(data.map(r=>r.escopo).filter(Boolean))].sort();
+  const tiposDisp   = [...new Set(data.map(r=>r.tipo).filter(Boolean))].sort();
+
   const applyAll = rows => {
     let r = rows;
     if (fMes  !== "Todos") r = r.filter(x => x.mes === fMes);
