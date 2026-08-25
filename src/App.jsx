@@ -667,7 +667,13 @@ const SIN_BG2   = { verde:"#DCFCE7",amarelo:"#FEF9C3",vermelho:"#FEE2E2" };
 const SIN_LB2   = { verde:"Boa Negociação",amarelo:"Moderada",vermelho:"Difícil" };
 const COLORS2   = { MARIANA:"#7C3AED",WILDER:"#0369A1",GIOVANNI:"#059669",CARLA:"#D97706",DARLAN:"#DC2626" };
 
-const fmtPct2 = v => (v!=null&&v!==""&&!isNaN(v)&&parseFloat(v)!==0)?`${(parseFloat(v)*100).toFixed(1)}%`:"—";
+const fmtPct2 = v => {
+  if (v==null||v===""||isNaN(v)) return "—";
+  const n = parseFloat(v);
+  if (n===0) return "—";
+  // Values stored as decimals (0.0756 = 7.56%) — multiply by 100
+  return `${(n*100).toFixed(2)}%`;
+};
 
 // Reprocessa dados de produtividade com colunas corretas
 const processProdFull = raw => {
@@ -816,9 +822,9 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
       const avg = (arr,fn) => arr.length ? arr.reduce((s,r)=>s+fn(r),0)/arr.length : null;
       return {
         grupo:g, rows, sin,
-        avgReaj:   avg(wR, r=>r.pctReaj),
-        avgPleito: avg(wR, r=>r.pctPleito),
-        avgAprov:  avg(wA, r=>r.aprovPct),
+        avgReaj:   avg(wR, r=>r.pctReaj),    // decimal (0.0756)
+        avgPleito: avg(wR, r=>r.pctPleito),  // decimal
+        avgAprov:  avg(wA, r=>r.aprovPct),   // decimal
         totalAtual:  ults.reduce((s,r)=>s+r.valAtual,0),
         totalPleito: ults.reduce((s,r)=>s+r.valPleito,0),
         totalDif:    ults.reduce((s,r)=>s+r.diferenca,0),
@@ -1217,7 +1223,22 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
   }
 
   // ── HISTÓRICO ─────────────────────────────────────────────────────────────────
-  const filtHistorico = filterRows(data);
+  // Histórico: uma linha por unidade (última revisão) com contagem de revisões
+  const filtHistorico = (() => {
+    const all = filterRows(data);
+    // Group by grupo+unidade, keep last revision, count revisions
+    const by = {};
+    all.forEach(r => {
+      const key = `${r.grupoCliente}||${r.unidade}||${r.nProposta.replace(/\s*(rev\.?\s*\d+|\.\s*\d+)\s*$/i,"")}`;
+      if (!by[key]) by[key] = {rows:[], last:null};
+      by[key].rows.push(r);
+      if (!by[key].last || r.nRev > by[key].last.nRev) by[key].last = r;
+    });
+    return Object.values(by).map(({rows, last}) => ({
+      ...last,
+      totalRevisoes: rows.filter(r=>r.isRevisao).length,
+    })).sort((a,b)=>(a.grupoCliente||"").localeCompare(b.grupoCliente||"")||(a.unidade||"").localeCompare(b.unidade||""));
+  })();
   return (
     <div>
       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
@@ -1252,7 +1273,10 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
                     <td style={{padding:"7px 10px",maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:DARK}}>{r.grupoCliente}</td>
                     <td style={{padding:"7px 10px",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:500}}>{r.unidade}</td>
                     <td style={{padding:"7px 10px"}}><TagP label={r.tipo||r.categoria} color={CAT_COM_C[r.categoria]||"#6B7280"}/></td>
-                    <td style={{padding:"7px 10px",textAlign:"center",color:r.isRevisao?"#DC2626":"#94A3B8",fontWeight:500}}>{r.nRev||0}</td>
+                    <td style={{padding:"7px 10px",textAlign:"center",
+                      color:r.totalRevisoes>0?"#7C3AED":"#94A3B8",fontWeight:600}}>
+                      {r.totalRevisoes||0}
+                    </td>
                     <td style={{padding:"7px 10px",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.valAtual>0?brl(r.valAtual):"—"}</td>
                     <td style={{padding:"7px 10px",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.valPleito>0?brl(r.valPleito):"—"}</td>
                     <td style={{padding:"7px 10px",color:"#16A34A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.diferenca>0?brl(r.diferenca):"—"}</td>
