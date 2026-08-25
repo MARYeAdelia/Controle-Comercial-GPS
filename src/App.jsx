@@ -415,7 +415,7 @@ function SecaoGerencial({ data, setData }) {
   const grupos = (()=>{
     const by={};
     filtrado.forEach(r=>{if(!by[r.grupo])by[r.grupo]=[];by[r.grupo].push(r);});
-    return Object.entries(by).map(([g,crs])=>({g,crs})).sort((a,b)=>a.g.localeCompare(b.g));
+    return Object.entries(by).map(([g,crs])=>({g,crs})).sort((a,b)=>(a.g||"").localeCompare(b.g||""));
   })();
 
   const nEditados = data.filter(r=>r._edited).length;
@@ -792,8 +792,8 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
     const base = applyMesSem(applyStatus(data));
     const by = {};
     for (const r of base) {
-      const g = r.grupoCliente;
-      if (!g) continue;
+      const g = (r.grupoCliente||"").trim();
+      if (!g || g.length < 2) continue;
       if (!by[g]) by[g] = {rows:[],sin:null};
       by[g].rows.push(r);
       if (!by[g].sin && r.sinalizacao) by[g].sin = r.sinalizacao;
@@ -1239,7 +1239,7 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {filtRows.sort((a,b)=>a.cliente.localeCompare(b.cliente)).map((r,i)=>{
+                        {filtRows.sort((a,b)=>(a.unidade||a.cliente||"").localeCompare(b.unidade||b.cliente||"")).map((r,i)=>{
                           const isAprov=r.status.toUpperCase().includes("APROVADO");
                           return(
                             <tr key={i} style={{background:i%2===0?"#fff":"#FAFBFC",
