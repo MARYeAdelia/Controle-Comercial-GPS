@@ -669,69 +669,75 @@ const COLORS2   = { MARIANA:"#7C3AED",WILDER:"#0369A1",GIOVANNI:"#059669",CARLA:
 
 const fmtPct2 = v => (v!=null&&v!==""&&!isNaN(v)&&parseFloat(v)!==0)?`${(parseFloat(v)*100).toFixed(1)}%`:"—";
 
-// Reprocessa dados de produtividade com lógica completa do original
+// Reprocessa dados de produtividade com colunas corretas
 const processProdFull = raw => {
   if (!raw?.length) return [];
-  const keys = Object.keys(raw[0]);
-  const col = (...kws) => keys.find(k => kws.some(kw => k.toUpperCase().replace(/\s+/g," ").trim().includes(kw.toUpperCase()))) || null;
-  const val = (r, ...kws) => { const k=col(...kws); return k ? r[k] : ""; };
-  return raw.map(r => {
-    const ativ = (val(r,"ATIVIDADE1")||val(r,"ATIVIDADE")||"").toString().trim().toUpperCase();
-    const tipo = (val(r,"TIPO DE PROPOSTA")||"").toString().trim().toUpperCase();
-    const obs  = (val(r,"OBS")||"").toString().trim();
-    const cValAtual  = col("VALOR CONTRATO ATUAL");
-    const cValPleito = col("REAJUSTE + PLEITO","COM REAJUSTE + PLEITO");
-    const cValReaj   = col("VALOR CONTRATO COM REAJUSTE");
-    const valAtual   = cValAtual ? num(r[cValAtual]) : 0;
-    const valPleito  = (cValPleito ? num(r[cValPleito]) : 0) || (cValReaj ? num(r[cValReaj]) : 0);
-    const semana = (val(r,"SEMANA")||"").toString().trim();
-    const isRevisao = (val(r,"REVISÃO","REVISAO")||"").toString().toUpperCase().includes("REVIS");
-    const row = {
-      isRevisao,
-      nProposta:    (val(r,"Nº PROPOSTA","N PROPOSTA","PROPOSTA")||"").toString().trim(),
-      grupoCliente: (val(r,"GRUPO CLIENTE")||"").toString().trim(),
-      cliente:      (val(r,"CLIENTE")||"").toString().trim(),
-      respFarmer:   (val(r,"RESP. FARMER","RESPONSÁVEL FARMER")||"").toString().trim(),
-      respHunter:   (val(r,"RESP. HUNTER","RESPONSÁVEL HUNTER")||"").toString().trim(),
-      atividade:ativ, tipoProposta:tipo, obs, semana,
-      valAtual, valPleito, diferenca: valPleito - valAtual,
-      pctReaj:   num(val(r,"REAJUSTE CONTRATUAL (%)")),
-      pctPleito: num(val(r,"PLEITO (%)")),
-      aprovR:    num(val(r,"APROVADO PELO CLIENTE (R$)")),
-      aprovPct:  num(val(r,"APROVADO PELO CLIENTE (%)")),
-      status:    (val(r,"STATUS")||"").toString().trim(),
-      mes:       (val(r,"Mês","MES")||"").toString().trim(),
-      sinalizacao: matchSin((val(r,"Sinalização","SINALIZACAO","SINALIZ")||"")),
-      escopo:    (val(r,"Escopo Atuação","ESCOPO")||"").toString().trim(),
-      fezPec:      val(r,"FEZ PEC"),
-      fezAbertura: val(r,"FEZ ABERTURA"),
-      fezProposta: val(r,"FEZ PROPOSTA COMERCIAL"),
-      fezCarta:    val(r,"FEZ CARTA DE REAJUSTE"),
-      fezNotif:    val(r,"FEZ CARTA DE NOTIF","FEZ NOTIF"),
-    };
-    row.responsavel = matchPessoa(row.respFarmer) || matchPessoa(row.respHunter) || null;
-    row.categoria   = matchCatP(ativ, tipo);
-    // entregaveis
-    const found = new Set();
+  const headers = Object.keys(raw[0]);
+  const col = (...kws) => headers.find(k => kws.some(kw => k.toUpperCase().replace(/\s+/g," ").trim().includes(kw.toUpperCase()))) || null;
+  const val = (r, ...kws) => { const k=col(...kws); return k ? (r[k]??"") : ""; };
+
+  // Agrupa por proposta base para pegar última revisão
+  const propBase = np => (np||"").toString().trim().replace(/\s*[-–]?\s*rev\.?\s*[\d]+$/i,"").trim();
+  const byProp = {};
+  raw.forEach((r,i) => {
+    const np  = val(r,"Nº Proposta","N PROPOSTA").toString().trim();
+    const rev = parseInt(val(r,"Nº da Revisão","REVISÃO","REVISAO"))||0;
+    const key = `${val(r,"Grupo Cliente")}||${propBase(np)}`;
+    if (!byProp[key] || rev > byProp[key].rev) byProp[key] = {r, rev, i};
+  });
+  // Marca quais são última revisão
+  const ultimasIdx = new Set(Object.values(byProp).map(x=>x.i));
+
+  return raw.map((r,i) => {
+    const respF = val(r,"Responsável Farmer","RESP. FARMER").toString().trim();
+    const respH = val(r,"Responsável Hunter","RESP. HUNTER").toString().trim();
+    const responsavel = matchPessoa(respF) || matchPessoa(respH);
+    if (!responsavel) return null;
+
+    const tipo    = val(r,"Tipo de Negócio","TIPO DE NEGOCIO","TIPO DE PROPOSTA").toString().trim();
+    const obs     = val(r,"OBS.","OBS").toString().trim();
+    const semana  = val(r,"Semana","SEMANA").toString().trim();
+    const nRev    = parseInt(val(r,"Nº da Revisão","REVISÃO","REVISAO"))||0;
+    const isRevisao = nRev > 0;
+    const isUltima  = ultimasIdx.has(i);
+
+    const valAtual  = num(val(r,"Valor Contrato Atual"));
+    const valPleito = num(val(r,"Valor Final / Pleito","Valor Proposta"));
     const isSim = v => ["SIM","S"].includes((v||"").toString().toUpperCase().trim());
-    if(isSim(row.fezPec))      found.add("PEC");
-    if(isSim(row.fezAbertura)) found.add("Abertura de Custo");
-    if(isSim(row.fezProposta)) found.add("Proposta Comercial");
-    if(isSim(row.fezCarta))    found.add("Carta de Reajuste");
-    if(isSim(row.fezNotif))    found.add("Notificação de Reajuste");
-    if (!found.size) {
-      const a=ativ, o=(obs||"").toUpperCase();
-      if(a.includes("PEC")||o.includes("PEC"))                             found.add("PEC");
-      if(a.includes("ABERTURA")||o.includes("ABERTURA DE CUSTO"))          found.add("Abertura de Custo");
-      if(a.includes("PROPOSTA COMERCIAL")||o.includes("PROPOSTA COMERCIAL"))found.add("Proposta Comercial");
-      if(a.includes("CARTA DE REAJUSTE")||o.includes("CARTA DE REAJUSTE")) found.add("Carta de Reajuste");
-      if(a.includes("NOTIFICAÇ")||o.includes("NOTIFICAÇ"))                 found.add("Notificação de Reajuste");
-      if(a.includes("REVISÃO DE ESCOPO")||o.includes("REVISÃO DE ESCOPO")) found.add("Revisão de Escopo");
-    }
-    row.entregaveis = found.size ? [...found] : [];
-    return row;
-  }).filter(r => r.responsavel);
+
+    const found = new Set();
+    if(isSim(val(r,"Fez PEC?")))                         found.add("PEC");
+    if(isSim(val(r,"Fez Abertura de Custo?")))           found.add("Abertura de Custo");
+    if(isSim(val(r,"Fez Proposta Comercial?")))          found.add("Proposta Comercial");
+    if(isSim(val(r,"Fez Carta de Reajuste?")))           found.add("Carta de Reajuste");
+    if(isSim(val(r,"Fez Notificação de Reajuste?")))     found.add("Notificação de Reajuste");
+
+    return {
+      responsavel, isRevisao, isUltima, nRev,
+      nProposta:    val(r,"Nº Proposta","N PROPOSTA").toString().trim(),
+      grupoCliente: val(r,"Grupo Cliente").toString().trim(),
+      unidade:      val(r,"Unidade / Filial","UNIDADE","FILIAL").toString().trim(),
+      escopo:       val(r,"Escopo Atuação","ESCOPO").toString().trim(),
+      mes:          val(r,"Mês","MES").toString().trim(),
+      semana,
+      tipo,
+      obs,
+      status:       val(r,"Status","STATUS").toString().trim(),
+      sinalizacao:  matchSin(val(r,"Semáforo (Dificuldade)","Semáforo","Sinalização","")),
+      valAtual, valPleito,
+      diferenca:    valPleito - valAtual,
+      pctReaj:      num(val(r,"% Reajuste Contrato")),
+      pctPleito:    num(val(r,"% Reajuste Pleito")),
+      aprovPct:     num(val(r,"% Reajuste Aceito")),
+      aprovR:       num(val(r,"Valor Proposta")),
+      entregaveis:  found.size ? [...found] : [],
+      categoria:    matchCatP("", tipo),
+    };
+  }).filter(Boolean);
 };
+
+// Filtra apenas última revisão por proposta para cálculos de valor
+const ultimasRevisoes = rows => rows.filter(r => r.isUltima);
 
 const TagP = ({label, color}) => (
   <span style={{fontSize:9,padding:"2px 7px",background:`${color}15`,color,
@@ -755,7 +761,7 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
   const [fEsc,  setFEsc]  = useState("Todos");
   const [obsOpen, setObsOpen] = useState(null);
 
-  const ativs   = data.filter(r => !r.isRevisao);
+  const ativs   = data.filter(r => r.isUltima); // última revisão por proposta
   const revs    = data.filter(r => r.isRevisao);
   const mesesDisp  = ORDEM_MES.filter(m => data.some(r => r.mes === m));
   const semanasDisp = [...new Set(data.map(r=>r.semana).filter(Boolean))].sort();
@@ -783,25 +789,27 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
   };
 
   const clienteStats = () => {
-    const base = applyMesSem(applyStatus(ativs));
+    const base = applyMesSem(applyStatus(data));
     const by = {};
     for (const r of base) {
-      const g = r.grupoCliente || r.cliente;
+      const g = r.grupoCliente;
+      if (!g) continue;
       if (!by[g]) by[g] = {rows:[],sin:null};
       by[g].rows.push(r);
       if (!by[g].sin && r.sinalizacao) by[g].sin = r.sinalizacao;
     }
     return Object.entries(by).map(([g,{rows,sin}]) => {
-      const wR = rows.filter(r=>r.pctReaj>0), wA = rows.filter(r=>r.aprovPct>0);
+      const ults = rows.filter(r=>r.isUltima);
+      const wR = ults.filter(r=>r.pctReaj>0), wA = ults.filter(r=>r.aprovPct>0);
       const avg = (arr,fn) => arr.length ? arr.reduce((s,r)=>s+fn(r),0)/arr.length : null;
       return {
         grupo:g, rows, sin,
         avgReaj:   avg(wR, r=>r.pctReaj),
         avgPleito: avg(wR, r=>r.pctPleito),
         avgAprov:  avg(wA, r=>r.aprovPct),
-        totalAtual:  rows.reduce((s,r)=>s+r.valAtual,0),
-        totalPleito: rows.reduce((s,r)=>s+r.valPleito,0),
-        totalDif:    rows.reduce((s,r)=>s+r.diferenca,0),
+        totalAtual:  ults.reduce((s,r)=>s+r.valAtual,0),
+        totalPleito: ults.reduce((s,r)=>s+r.valPleito,0),
+        totalDif:    ults.reduce((s,r)=>s+r.diferenca,0),
       };
     }).sort((a,b) => b.rows.length - a.rows.length);
   };
@@ -894,16 +902,17 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
         {/* KPIs */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:20}}>
           {[
-            {l:"Atividades",      v:base.length},
-            {l:"Revisões",        v:revs.length},
+            {l:"Propostas",       v:data.filter(r=>!r.isRevisao&&(fMes==="Todos"||r.mes===fMes)).length},
+            {l:"Revisões",        v:data.filter(r=>r.isRevisao&&(fMes==="Todos"||r.mes===fMes)).length},
             {l:"Valor Atual",     v:brl(base.reduce((s,r)=>s+r.valAtual,0))},
             {l:"Valor c/ Pleito", v:brl(base.reduce((s,r)=>s+r.valPleito,0))},
             {l:"Ganho Potencial", v:brl(base.reduce((s,r)=>s+r.diferenca,0)), hl:true},
           ].map(i=>(
-            <div key={i.l} style={{background:"#fff",borderRadius:10,padding:"14px 16px",
-                                    boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+            <div key={i.l} style={{background:i.hl?"#F0FDF4":"#F8FAFC",borderRadius:10,
+                                    padding:"14px 16px",boxShadow:"0 1px 4px rgba(0,0,0,.07)",
+                                    borderLeft:`3px solid ${i.hl?"#16A34A":"#E2E8F0"}`}}>
               <div style={{fontSize:10,color:"#94A3B8",marginBottom:4}}>{i.l}</div>
-              <div style={{fontSize:18,fontWeight:700,color:i.hl?"#16A34A":DARK}}>{i.v}</div>
+              <div style={{fontSize:20,fontWeight:700,color:i.hl?"#16A34A":DARK}}>{i.v}</div>
             </div>
           ))}
         </div>
@@ -918,8 +927,9 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
             const aprov = sp.filter(r=>r.status.toUpperCase().includes("APROVADO"));
             const cor   = COLORS2[p];
             return (
-              <div key={p} style={{background:"#fff",borderRadius:12,padding:18,
-                                    borderTop:`3px solid ${cor}`,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+              <div key={p} style={{background:`${cor}08`,borderRadius:12,padding:18,
+                                    borderTop:`3px solid ${cor}`,boxShadow:"0 1px 4px rgba(0,0,0,.07)",
+                                    border:`1px solid ${cor}20`}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
                   <div>
                     <div style={{fontSize:10,color:"#94A3B8",marginBottom:2}}>Analista</div>
@@ -939,7 +949,8 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
                     {l:"Com Pleito",     v:brl(sp.reduce((s,r)=>s+r.valPleito,0))},
                     {l:"Diferença",      v:brl(sp.reduce((s,r)=>s+r.diferenca,0)), hl:true},
                   ].map(k=>(
-                    <div key={k.l} style={{background:"#F8FAFC",borderRadius:8,padding:"7px 8px"}}>
+                    <div key={k.l} style={{background:"#fff",borderRadius:8,padding:"7px 8px",
+                                            border:"1px solid #E2E8F0"}}>
                       <div style={{fontSize:9,color:"#94A3B8",marginBottom:2}}>{k.l}</div>
                       <div style={{fontSize:11,fontWeight:600,color:k.hl?"#16A34A":DARK}}>{k.v}</div>
                     </div>
@@ -981,8 +992,9 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
             const cor  = COLORS2[p];
             const porCat = CAT_COM.map(cat=>({cat,n:sp.filter(r=>r.categoria===cat).length})).filter(x=>x.n>0);
             return (
-              <div key={p} style={{background:"#fff",borderRadius:12,padding:18,
-                                    borderTop:`3px solid ${cor}`,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+              <div key={p} style={{background:`${cor}08`,borderRadius:12,padding:18,
+                                    borderTop:`3px solid ${cor}`,boxShadow:"0 1px 4px rgba(0,0,0,.07)",
+                                    border:`1px solid ${cor}20`}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
                   <div>
                     <div style={{fontSize:10,color:"#94A3B8",marginBottom:2}}>Liderança</div>
@@ -1001,7 +1013,8 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
                     {l:"Com Pleito",  v:brl(sp.reduce((s,r)=>s+r.valPleito,0))},
                     {l:"Diferença",   v:brl(sp.reduce((s,r)=>s+r.diferenca,0)), hl:true},
                   ].map(k=>(
-                    <div key={k.l} style={{background:"#F8FAFC",borderRadius:8,padding:"7px 8px"}}>
+                    <div key={k.l} style={{background:"#fff",borderRadius:8,padding:"7px 8px",
+                                            border:"1px solid #E2E8F0"}}>
                       <div style={{fontSize:9,color:"#94A3B8",marginBottom:2}}>{k.l}</div>
                       <div style={{fontSize:11,fontWeight:600,color:k.hl?"#16A34A":DARK}}>{k.v}</div>
                     </div>
@@ -1024,9 +1037,10 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
           {["verde","amarelo","vermelho"].map(sin=>{
             const list=cStats.filter(c=>c.sin===sin);
             return(
-              <div key={sin} style={{background:"#fff",borderRadius:12,padding:16,
+              <div key={sin} style={{background:`${SIN_C2[sin]}08`,borderRadius:12,padding:16,
                                       borderTop:`3px solid ${SIN_C2[sin]}`,
-                                      boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+                                      boxShadow:"0 1px 4px rgba(0,0,0,.07)",
+                                      border:`1px solid ${SIN_C2[sin]}25`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                   <div style={{display:"flex",alignItems:"center",gap:7}}>
                     <div style={{width:9,height:9,borderRadius:99,background:SIN_C2[sin]}}/>
@@ -1099,8 +1113,9 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
             const ents  = contarEnt(rows);
             const cor   = COLORS2[p];
             return(
-              <div key={p} style={{background:"#fff",borderRadius:12,padding:18,
-                                    borderTop:`3px solid ${cor}`,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+              <div key={p} style={{background:`${cor}08`,borderRadius:12,padding:18,
+                                    borderTop:`3px solid ${cor}`,boxShadow:"0 1px 4px rgba(0,0,0,.07)",
+                                    border:`1px solid ${cor}20`}}>
                 <div style={{marginBottom:14}}>
                   <div style={{fontSize:10,color:"#94A3B8",marginBottom:2}}>Analista</div>
                   <div style={{fontSize:16,fontWeight:700,color:cor}}>{p.charAt(0)+p.slice(1).toLowerCase()}</div>
@@ -1229,9 +1244,9 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
                           return(
                             <tr key={i} style={{background:i%2===0?"#fff":"#FAFBFC",
                                                 borderTop:"1px solid #F1F4F8"}}>
-                              <td style={{padding:"7px 12px",fontWeight:500,color:DARK,whiteSpace:"nowrap"}}>{r.cliente}</td>
-                              <td style={{padding:"7px 12px"}}><TagP label={r.categoria} color={CAT_COM_C[r.categoria]||"#6B7280"}/></td>
-                              <td style={{padding:"7px 12px",color:"#94A3B8",textAlign:"center"}}>{r.isRevisao?"Rev":"—"}</td>
+                              <td style={{padding:"7px 12px",fontWeight:500,color:DARK,whiteSpace:"nowrap"}}>{r.unidade}</td>
+                              <td style={{padding:"7px 12px"}}><TagP label={r.tipo||r.categoria} color={CAT_COM_C[r.categoria]||"#6B7280"}/></td>
+                              <td style={{padding:"7px 12px",color:"#94A3B8",textAlign:"center"}}>{r.nRev||0}</td>
                               <td style={{padding:"7px 12px",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.valAtual>0?brl(r.valAtual):"—"}</td>
                               <td style={{padding:"7px 12px",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.valPleito>0?brl(r.valPleito):"—"}</td>
                               <td style={{padding:"7px 12px",color:"#16A34A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.diferenca>0?brl(r.diferenca):"—"}</td>
@@ -1323,9 +1338,9 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
                     </td>
                     <td style={{padding:"7px 10px",color:"#94A3B8",whiteSpace:"nowrap",fontSize:10}}>{r.escopo||"—"}</td>
                     <td style={{padding:"7px 10px",maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:DARK}}>{r.grupoCliente}</td>
-                    <td style={{padding:"7px 10px",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:500}}>{r.cliente}</td>
-                    <td style={{padding:"7px 10px"}}><TagP label={r.categoria} color={CAT_COM_C[r.categoria]||"#6B7280"}/></td>
-                    <td style={{padding:"7px 10px",textAlign:"center",color:r.isRevisao?"#DC2626":"#94A3B8"}}>{r.isRevisao?"Rev":"—"}</td>
+                    <td style={{padding:"7px 10px",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:500}}>{r.unidade}</td>
+                    <td style={{padding:"7px 10px"}}><TagP label={r.tipo||r.categoria} color={CAT_COM_C[r.categoria]||"#6B7280"}/></td>
+                    <td style={{padding:"7px 10px",textAlign:"center",color:r.isRevisao?"#DC2626":"#94A3B8",fontWeight:500}}>{r.nRev||0}</td>
                     <td style={{padding:"7px 10px",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.valAtual>0?brl(r.valAtual):"—"}</td>
                     <td style={{padding:"7px 10px",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.valPleito>0?brl(r.valPleito):"—"}</td>
                     <td style={{padding:"7px 10px",color:"#16A34A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.diferenca>0?brl(r.diferenca):"—"}</td>
