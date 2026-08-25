@@ -750,23 +750,36 @@ const BarP = ({p, color}) => (
   </div>
 );
 
-function SecaoProdutividade({ rawData, subPag, setSubPag }) {
+function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
   const data = React.useMemo(() => processProdFull(rawData), [rawData]);
-  const [fResp, setFResp] = useState("Todos");
-  const [fStat, setFStat] = useState("Todos");
-  const [fCat,  setFCat]  = useState("Todas");
-  const [fSin,  setFSin]  = useState("Todos");
-  const [fMes,  setFMes]  = useState("Todos");
-  const [fSem,  setFSem]  = useState("Todas");
-  const [fEsc,  setFEsc]  = useState("Todos");
+  const [fCat,    setFCat]    = useState("Todas");
   const [obsOpen, setObsOpen] = useState(null);
 
-  const ativs   = data.filter(r => r.isUltima); // última revisão por proposta
-  const revs    = data.filter(r => r.isRevisao);
-  const mesesDisp  = ORDEM_MES.filter(m => data.some(r => r.mes === m));
-  const semanasDisp = [...new Set(data.map(r=>r.semana).filter(Boolean))].sort();
-  const escoposDisp = [...new Set(data.map(r=>r.escopo).filter(Boolean))].sort();
+  // Usa filtros do menu lateral
+  const fResp = filtros?.fResp || "Todos";
+  const fStat = filtros?.fStat || "Todos";
+  const fMes  = filtros?.fMes  || "Todos";
+  const fSem  = filtros?.fSem  || "Todas";
+  const fEsc  = filtros?.fEsc  || "Todos";
+  const fSin  = filtros?.fSin  || "Todos";
+  const fTipo = filtros?.fTipo || "Todos";
 
+  const ativs = data.filter(r => r.isUltima);
+  const revs  = data.filter(r => r.isRevisao);
+
+  const applyAll = rows => {
+    let r = rows;
+    if (fMes  !== "Todos") r = r.filter(x => x.mes === fMes);
+    if (fSem  !== "Todas") r = r.filter(x => x.semana === fSem);
+    if (fResp !== "Todos") r = r.filter(x => x.responsavel === fResp);
+    if (fEsc  !== "Todos") r = r.filter(x => x.escopo === fEsc);
+    if (fSin  !== "Todos") r = r.filter(x => x.sinalizacao === fSin);
+    if (fTipo !== "Todos") r = r.filter(x => x.tipo === fTipo);
+    if (fStat === "Aprovado")      r = r.filter(x => x.status.toUpperCase().includes("APROVADO"));
+    else if (fStat === "Em Negociação") r = r.filter(x => x.status.toUpperCase().includes("NEGOCI"));
+    else if (fStat === "Recusado") r = r.filter(x => x.status.toUpperCase().includes("RECUS"));
+    return r;
+  };
   const applyMesSem = rows => {
     let r = rows;
     if (fMes !== "Todos") r = r.filter(x => x.mes === fMes);
@@ -779,17 +792,10 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
     if (fStat === "Recusado")      return rows.filter(r => r.status.toUpperCase().includes("RECUS"));
     return rows;
   };
-  const filterRows = rows => {
-    let r = applyMesSem(rows);
-    if (fResp !== "Todos") r = r.filter(x => x.responsavel === fResp);
-    r = applyStatus(r);
-    if (fCat !== "Todas") r = r.filter(x => x.categoria === fCat);
-    if (fEsc !== "Todos") r = r.filter(x => x.escopo === fEsc);
-    return r;
-  };
+  const filterRows = rows => applyAll(rows);
 
   const clienteStats = () => {
-    const base = applyMesSem(applyStatus(data));
+    const base = applyAll(data);
     const by = {};
     for (const r of base) {
       const g = (r.grupoCliente||"").trim();
@@ -830,46 +836,11 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
     }}>{label}</button>
   );
 
-  const filtros = (
-    <div style={{background:"#fff",borderRadius:10,padding:"10px 14px",marginBottom:16,
-                 display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",
-                 boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>
-      {/* Status */}
-      <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-        <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>STATUS</span>
-        {["Todos","Aprovado","Em Negociação","Recusado"].map(s=>(
-          <PillP key={s} label={s} active={fStat===s} onClick={()=>setFStat(s)}/>
-        ))}
-      </div>
-      <div style={{width:1,height:20,background:"#E2E8F0"}}/>
-      {/* Mês */}
-      <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-        <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>MÊS</span>
-        <PillP label="Todos" active={fMes==="Todos"} onClick={()=>setFMes("Todos")}/>
-        {mesesDisp.map(m=><PillP key={m} label={m} active={fMes===m} onClick={()=>setFMes(m)}/>)}
-      </div>
-      <div style={{width:1,height:20,background:"#E2E8F0"}}/>
-      {/* Semana */}
-      <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-        <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>SEMANA</span>
-        <PillP label="Todas" active={fSem==="Todas"} onClick={()=>setFSem("Todas")}/>
-        {semanasDisp.map(s=><PillP key={s} label={s} active={fSem===s} onClick={()=>setFSem(s)}/>)}
-      </div>
-      <div style={{width:1,height:20,background:"#E2E8F0"}}/>
-      {/* Responsável */}
-      <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-        <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>ANALISTA</span>
-        {["Todos","MARIANA","WILDER","GIOVANNI","CARLA","DARLAN"].map(p=>(
-          <PillP key={p} label={p==="Todos"?"Todos":p.charAt(0)+p.slice(1).toLowerCase()}
-            active={fResp===p} color={COLORS2[p]} onClick={()=>setFResp(p)}/>
-        ))}
-      </div>
-    </div>
-  );
+
 
   // ── VISÃO GERAL ──────────────────────────────────────────────────────────────
   if (subPag === "visao") {
-    const base      = applyMesSem(applyStatus(ativs));
+    const base      = applyAll(ativs);
     const cStats    = clienteStats();
     const scopeCat  = cat => base.filter(r => r.categoria === cat);
 
@@ -1069,12 +1040,11 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
 
   // ── ESFORÇO ──────────────────────────────────────────────────────────────────
   if (subPag === "esforco") {
-    const base     = applyMesSem(data);
-    const analBase = base.filter(r => ["MARIANA","WILDER","GIOVANNI"].includes(r.responsavel));
+    const base     = applyAll(data);
+    const analBase = base;
     const entGeral = contarEnt(analBase);
     return (
       <div>
-        {filtros}
         <div style={{marginBottom:20}}>
           <div style={{fontSize:11,fontWeight:600,letterSpacing:".06em",color:"#94A3B8",
                        textTransform:"uppercase",marginBottom:4}}>Esforço Operacional</div>
@@ -1109,7 +1079,7 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
         {/* Por analista */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
           {["MARIANA","WILDER","GIOVANNI"].map(p=>{
-            const rows  = applyMesSem(data).filter(r=>r.responsavel===p);
+            const rows  = applyAll(data).filter(r=>r.responsavel===p);
             const ents  = contarEnt(rows);
             const cor   = COLORS2[p];
             return(
@@ -1153,7 +1123,6 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
     const filtered = fSin==="Todos" ? cStats : cStats.filter(c=>c.sin===fSin);
     return (
       <div>
-        {filtros}
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,flexWrap:"wrap"}}>
           <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
             <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>SEMÁFORO</span>
@@ -1296,7 +1265,6 @@ function SecaoProdutividade({ rawData, subPag, setSubPag }) {
   const filtHistorico = filterRows(data);
   return (
     <div>
-      {filtros}
       <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
         <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
           <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>TIPO</span>
@@ -1384,6 +1352,15 @@ export default function App() {
   const [secao,   setSecao]   = useState("gerencial");
   const [subPag,  setSubPag]  = useState("visao");
   const [menuOpen,setMenuOpen]= useState(false);
+
+  // Filtros de Produtividade — no menu lateral
+  const [pFResp, setPFResp] = useState("Todos");
+  const [pFStat, setPFStat] = useState("Todos");
+  const [pFMes,  setPFMes]  = useState("Todos");
+  const [pFSem,  setPFSem]  = useState("Todas");
+  const [pFEsc,  setPFEsc]  = useState("Todos");
+  const [pFSin,  setPFSin]  = useState("Todos");
+  const [pFTipo, setPFTipo] = useState("Todos");
 
   const buscarDados = useCallback(async()=>{
     setLoading(true);setErro(null);
@@ -1496,10 +1473,103 @@ export default function App() {
 
 
 
+        {/* Filtros Produtividade no menu */}
+        {menuOpen&&secao==="produtividade"&&pData.length>0&&(()=>{
+          const procData = processProdFull(pData);
+          const mesesDisp  = ORDEM_MES.filter(m=>procData.some(r=>r.mes===m));
+          const semanasDisp= [...new Set(procData.map(r=>r.semana).filter(Boolean))].sort();
+          const escoposDisp= [...new Set(procData.map(r=>r.escopo).filter(Boolean))].sort();
+          const tiposDisp  = [...new Set(procData.map(r=>r.tipo).filter(Boolean))].sort();
+
+          const BtnF = ({label,active,color,onClick}) => (
+            <button onClick={onClick} style={{
+              padding:"3px 9px",borderRadius:99,border:"none",cursor:"pointer",
+              fontFamily:"inherit",fontSize:11,fontWeight:500,transition:"all .15s",
+              background:active?(color||"#60A5FA"):"rgba(255,255,255,.08)",
+              color:active?"#fff":"rgba(255,255,255,.5)",whiteSpace:"nowrap",
+              marginBottom:3,
+            }}>{label}</button>
+          );
+
+          const Sec = ({label,children}) => (
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:9,fontWeight:700,color:"rgba(255,255,255,.3)",
+                           textTransform:"uppercase",letterSpacing:".1em",marginBottom:6}}>{label}</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:3}}>{children}</div>
+            </div>
+          );
+
+          return (
+            <div style={{flex:1,overflowY:"auto",padding:"14px 12px",
+                         borderTop:"1px solid rgba(255,255,255,.07)"}}>
+              <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,.25)",
+                           textTransform:"uppercase",letterSpacing:".1em",marginBottom:14}}>
+                Filtros
+              </div>
+
+              <Sec label="Responsável">
+                {["Todos","Mariana","Wilder","Giovanni","Carla","Darlan"].map(p=>(
+                  <BtnF key={p} label={p} active={pFResp===p}
+                    color={COR_P[p]||"#60A5FA"} onClick={()=>setPFResp(p)}/>
+                ))}
+              </Sec>
+
+              <Sec label="Status">
+                {["Todos","Aprovado","Em Negociação","Recusado"].map(s=>(
+                  <BtnF key={s} label={s} active={pFStat===s} onClick={()=>setPFStat(s)}/>
+                ))}
+              </Sec>
+
+              <Sec label="Mês">
+                {["Todos",...mesesDisp].map(m=>(
+                  <BtnF key={m} label={m} active={pFMes===m} onClick={()=>setPFMes(m)}/>
+                ))}
+              </Sec>
+
+              <Sec label="Semana">
+                {["Todas",...semanasDisp].map(s=>(
+                  <BtnF key={s} label={s} active={pFSem===s} onClick={()=>setPFSem(s)}/>
+                ))}
+              </Sec>
+
+              <Sec label="Escopo">
+                {["Todos",...escoposDisp].map(e=>(
+                  <BtnF key={e} label={e} active={pFEsc===e} onClick={()=>setPFEsc(e)}/>
+                ))}
+              </Sec>
+
+              <Sec label="Semáforo">
+                {[
+                  {v:"Todos",l:"Todos"},
+                  {v:"verde",l:"Boa Negociação",c:"#16A34A"},
+                  {v:"amarelo",l:"Moderada",c:"#D97706"},
+                  {v:"vermelho",l:"Difícil",c:"#DC2626"},
+                ].map(({v,l,c})=>(
+                  <BtnF key={v} label={l} active={pFSin===v} color={c} onClick={()=>setPFSin(v)}/>
+                ))}
+              </Sec>
+
+              <Sec label="Tipo de Negócio">
+                {["Todos",...tiposDisp].map(t=>(
+                  <BtnF key={t} label={t} active={pFTipo===t} onClick={()=>setPFTipo(t)}/>
+                ))}
+              </Sec>
+
+              <button onClick={()=>{setPFResp("Todos");setPFStat("Todos");setPFMes("Todos");
+                setPFSem("Todas");setPFEsc("Todos");setPFSin("Todos");setPFTipo("Todos");}}
+                style={{width:"100%",padding:"6px",borderRadius:8,border:"1px solid rgba(255,255,255,.15)",
+                        background:"transparent",color:"rgba(255,255,255,.4)",fontSize:11,
+                        cursor:"pointer",fontFamily:"inherit",marginTop:4}}>
+                Limpar filtros
+              </button>
+            </div>
+          );
+        })()}
+
         {/* Última atualização */}
         {menuOpen&&ultimaAt&&(
           <div style={{padding:"10px 16px",borderTop:"1px solid rgba(255,255,255,.06)",
-                       fontSize:10,color:"rgba(255,255,255,.25)",marginTop:"auto"}}>
+                       fontSize:10,color:"rgba(255,255,255,.25)"}}>
             Atualizado às {ultimaAt.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}
           </div>
         )}
@@ -1552,7 +1622,8 @@ export default function App() {
             <SecaoGerencial data={gData} setData={setGData}/>
           )}
           {!loading&&!erro&&secao==="produtividade"&&(
-            <SecaoProdutividade rawData={pData} subPag={subPag} setSubPag={setSubPag}/>
+            <SecaoProdutividade rawData={pData} subPag={subPag} setSubPag={setSubPag}
+              filtros={{fResp:pFResp,fStat:pFStat,fMes:pFMes,fSem:pFSem,fEsc:pFEsc,fSin:pFSin,fTipo:pFTipo}}/>
           )}
         </div>
       </div>
