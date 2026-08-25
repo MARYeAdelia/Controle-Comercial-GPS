@@ -876,17 +876,6 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
       <div>
 
 
-        {/* DEBUG - remove after fix */}
-        <div style={{background:"#fff",padding:"8px 12px",borderRadius:8,marginBottom:10,fontSize:11,color:"#64748B"}}>
-          Total data: {data.length} | Ativs: {ativs.length} | Base: {base.length} |{" "}
-          Mariana: {data.filter(r=>r.responsavel==="Mariana").length} |{" "}
-          Wilder: {data.filter(r=>r.responsavel==="Wilder").length} |{" "}
-          Giovanni: {data.filter(r=>r.responsavel==="Giovanni").length} |{" "}
-          Carla: {data.filter(r=>r.responsavel==="Carla").length} |{" "}
-          Darlan: {data.filter(r=>r.responsavel==="Darlan").length} |{" "}
-          Sample resp: {data[0]?.responsavel||"?"} | isUltima: {data[0]?.isUltima?"true":"false"}
-        </div>
-
         {/* KPIs */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:20}}>
           {[
@@ -923,7 +912,7 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
                     <div style={{fontSize:10,color:"#94A3B8",marginBottom:2}}>Analista</div>
                     <div style={{fontSize:16,fontWeight:700,color:cor}}>{p}</div>
                     <div style={{fontSize:10,color:"#94A3B8",marginTop:2}}>
-                      {sp.length} atividades · {revP.length} revisões
+                      {allP.filter(r=>!r.isRevisao).length} atividades · {revP.length} revisões
                     </div>
                   </div>
                   <div style={{textAlign:"right",fontSize:11}}>
@@ -946,8 +935,8 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
                 </div>
                 <div style={{borderTop:"1px solid #F1F4F8",paddingTop:10}}>
                   <div style={{fontSize:9,color:"#94A3B8",marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>Por Tipo</div>
-                  {[...new Set(sp.map(r=>r.tipo).filter(Boolean))].sort().map(tipo=>{
-                    const d = sp.filter(r=>r.tipo===tipo);
+                  {[...new Set(allP.map(r=>r.tipo).filter(Boolean))].sort().map(tipo=>{
+                    const d = allP.filter(r=>r.tipo===tipo);
                     if(!d.length) return null;
                     return(
                       <div key={tipo} style={{display:"flex",justifyContent:"space-between",
@@ -974,11 +963,12 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
                      color:"#94A3B8",marginBottom:12}}>Liderança</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14,marginBottom:24}}>
           {["Carla","Darlan"].map(p=>{
-            const sp   = base.filter(r=>r.responsavel===p);
-            const revP = revs.filter(r=>r.responsavel===p);
-            const aprov= sp.filter(r=>r.status.toUpperCase().includes("APROVADO"));
+            const allP = applyAll(data).filter(r=>r.responsavel===p);
+            const sp   = allP.filter(r=>r.isUltima);
+            const revP = allP.filter(r=>r.isRevisao);
+            const aprov= allP.filter(r=>r.status.toUpperCase().includes("APROVADO"));
             const cor  = COR_P[p]||"#D97706";
-            const porCat = [...new Set(sp.map(r=>r.tipo).filter(Boolean))].map(cat=>({cat,n:sp.filter(r=>r.tipo===cat).length})).filter(x=>x.n>0).sort((a,b)=>b.n-a.n);
+            const porCat = [...new Set(allP.map(r=>r.tipo).filter(Boolean))].map(cat=>({cat,n:allP.filter(r=>r.tipo===cat).length})).filter(x=>x.n>0).sort((a,b)=>b.n-a.n);
             return (
               <div key={p} style={{background:`${cor}08`,borderRadius:12,padding:18,
                                     borderTop:`3px solid ${cor}`,boxShadow:"0 1px 4px rgba(0,0,0,.07)",
@@ -987,7 +977,7 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
                   <div>
                     <div style={{fontSize:10,color:"#94A3B8",marginBottom:2}}>Liderança</div>
                     <div style={{fontSize:16,fontWeight:700,color:cor}}>{p}</div>
-                    <div style={{fontSize:10,color:"#94A3B8",marginTop:2}}>{sp.length} interações · {revP.length} revisões</div>
+                    <div style={{fontSize:10,color:"#94A3B8",marginTop:2}}>{allP.length} interações · {revP.length} revisões</div>
                   </div>
                   <div style={{background:"#DCFCE7",borderRadius:8,padding:"4px 10px",textAlign:"center"}}>
                     <div style={{fontSize:16,fontWeight:700,color:"#16A34A"}}>{aprov.length}</div>
@@ -1037,14 +1027,20 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
                   <div style={{fontSize:22,fontWeight:800,color:SIN_C2[sin]}}>{list.length}</div>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                  {list.slice(0,5).map(c=>(
+                  {list.slice(0,6).map(c=>{
+                    const unidades = new Set(c.rows.filter(r=>r.isUltima).map(r=>r.unidade||r.grupoCliente));
+                    return(
                     <div key={c.grupo} style={{display:"flex",justifyContent:"space-between",
-                      padding:"5px 10px",background:SIN_BG2[sin],borderRadius:6}}>
+                      alignItems:"center",padding:"5px 10px",background:SIN_BG2[sin],borderRadius:6}}>
                       <span style={{fontSize:11,color:SIN_C2[sin],fontWeight:500}}>{c.grupo}</span>
-                      <span style={{fontSize:10,color:SIN_C2[sin]}}>{c.rows.length}×</span>
+                      <span style={{fontSize:10,color:SIN_C2[sin],fontWeight:600,
+                        background:`${SIN_C2[sin]}20`,padding:"1px 6px",borderRadius:99}}>
+                        {unidades.size} contrato{unidades.size!==1?"s":""}
+                      </span>
                     </div>
-                  ))}
-                  {list.length>5&&<div style={{fontSize:10,color:"#94A3B8",textAlign:"center",paddingTop:3}}>+{list.length-5} grupos</div>}
+                    );
+                  })}
+                  {list.length>6&&<div style={{fontSize:10,color:"#94A3B8",textAlign:"center",paddingTop:3}}>+{list.length-6} grupos</div>}
                   {!list.length&&<div style={{fontSize:11,color:"#94A3B8",textAlign:"center",padding:"10px 0"}}>Nenhum classificado</div>}
                 </div>
               </div>
