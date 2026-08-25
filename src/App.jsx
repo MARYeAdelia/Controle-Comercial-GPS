@@ -22,6 +22,14 @@ const TIPO_G = ["Reajuste","DT","Renovação","Negócio Perdido"];
 const DARK  = "#1a2332";
 const DARK2 = "#243044";
 const MENU_BG = "#0F1F35";
+
+// Equipe e cores (usadas em Gerencial e Produtividade)
+const EQUIPE   = ["Mariana","Wilder","Giovanni","Carla","Darlan"];
+const COR_P    = { Mariana:"#7C3AED",Wilder:"#0369A1",Giovanni:"#059669",Carla:"#D97706",Darlan:"#DC2626" };
+const SIN_COR  = { Verde:"#16A34A",Amarelo:"#D97706",Vermelho:"#DC2626" };
+const SIN_BG   = { Verde:"#DCFCE7",Amarelo:"#FEF9C3",Vermelho:"#FEE2E2" };
+const TIPO_P   = ["Reajuste","Renovação","Up Selling","Defesa de Território","Alteração de Escopo","BID/Cotação","Outros"];
+const TIPO_COR_P = { "Reajuste":"#7C3AED","Renovação":"#0891B2","Up Selling":"#059669","Defesa de Território":"#D97706","Alteração de Escopo":"#0369A1","BID/Cotação":"#DC2626","Outros":"#6B7280" };
 const MENU_W_OPEN  = 220;
 const MENU_W_CLOSE = 48;
 
