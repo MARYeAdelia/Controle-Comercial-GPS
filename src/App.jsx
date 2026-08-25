@@ -745,7 +745,7 @@ const processProdFull = raw => {
       tipo,
       obs,
       status:       val(r,"Status","STATUS").toString().trim(),
-      sinalizacao:  matchSin(val(r,"Semáforo (Dificuldade)","Semáforo","Sinalização","")),
+      sinalizacao:  matchSin(val(r,"Semáforo (Dificuldade)","Semáforo","Sinaliz")),
       valAtual, valPleito,
       diferenca:    valPleito - valAtual,
       pctReaj:      num(val(r,"% Reajuste Contrato")),
