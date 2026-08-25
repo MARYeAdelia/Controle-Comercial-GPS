@@ -4,16 +4,13 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   const SHEET_ID = "1Mw46A8j0c5-6VyOY8K7bEFPTnEGLh6nG-lL5jEXe2G0";
-  const GID = "2073814116"; // Aba Gerencial
+  const gid = req.query.gid || "2073814116";
 
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`;
 
   try {
     const response = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "text/csv,text/plain,*/*",
-      },
+      headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/csv,*/*" },
       redirect: "follow",
     });
     if (!response.ok) throw new Error(`Google retornou ${response.status}`);
