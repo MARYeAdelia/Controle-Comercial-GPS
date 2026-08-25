@@ -876,6 +876,17 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
       <div>
 
 
+        {/* DEBUG - remove after fix */}
+        <div style={{background:"#fff",padding:"8px 12px",borderRadius:8,marginBottom:10,fontSize:11,color:"#64748B"}}>
+          Total data: {data.length} | Ativs: {ativs.length} | Base: {base.length} |{" "}
+          Mariana: {data.filter(r=>r.responsavel==="Mariana").length} |{" "}
+          Wilder: {data.filter(r=>r.responsavel==="Wilder").length} |{" "}
+          Giovanni: {data.filter(r=>r.responsavel==="Giovanni").length} |{" "}
+          Carla: {data.filter(r=>r.responsavel==="Carla").length} |{" "}
+          Darlan: {data.filter(r=>r.responsavel==="Darlan").length} |{" "}
+          Sample resp: {data[0]?.responsavel||"?"} | isUltima: {data[0]?.isUltima?"true":"false"}
+        </div>
+
         {/* KPIs */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:20}}>
           {[
