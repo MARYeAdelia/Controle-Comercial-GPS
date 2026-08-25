@@ -130,7 +130,15 @@ const InlineSelect = ({ value, options, colorMap, onChange }) => {
     e.stopPropagation();
     if (!open && triggerRef.current) {
       const r = triggerRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, left: r.left });
+      const spaceBelow = window.innerHeight - r.bottom;
+      const menuHeight = options.length * 42;
+      // Se não há espaço suficiente embaixo, abre para cima
+      const openUp = spaceBelow < menuHeight + 8;
+      setPos({
+        top: openUp ? r.top - menuHeight - 4 : r.bottom + 4,
+        left: r.left,
+        openUp,
+      });
     }
     setOpen(o => !o);
   };
