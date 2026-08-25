@@ -18,16 +18,7 @@ const STATUS_COR = {
   "Aguardando Reajuste":     { dot:"#9CA3AF", text:"#6B7280", bg:"#F3F4F6" },
 };
 const TIPO_G = ["Reajuste","DT","Renovação","Negócio Perdido"];
-const TIPO_P = ["Reajuste","Renovação","Up Selling","Defesa de Território","Alteração de Escopo","BID/Cotação","Outros"];
-const TIPO_COR_P = {
-  "Reajuste":"#7C3AED","Renovação":"#0891B2","Up Selling":"#059669",
-  "Defesa de Território":"#D97706","Alteração de Escopo":"#0369A1",
-  "BID/Cotação":"#DC2626","Outros":"#6B7280"
-};
-const EQUIPE = ["Mariana","Wilder","Giovanni","Carla","Darlan"];
-const COR_P  = { Mariana:"#7C3AED",Wilder:"#0369A1",Giovanni:"#059669",Carla:"#D97706",Darlan:"#DC2626" };
-const SIN_COR = { Verde:"#16A34A",Amarelo:"#D97706",Vermelho:"#DC2626" };
-const SIN_BG  = { Verde:"#DCFCE7",Amarelo:"#FEF9C3",Vermelho:"#FEE2E2" };
+
 const DARK  = "#1a2332";
 const DARK2 = "#243044";
 const MENU_BG = "#0F1F35";
@@ -99,91 +90,133 @@ const fetchCSV = async gid => {
 
 // ─── PROCESSA GERENCIAL ───────────────────────────────────────────────────────
 const processGerencial = raw => {
-  const keys = raw.length?Object.keys(raw[0]):[];
-  const find = (...kws) => keys.find(k=>kws.some(kw=>k.toUpperCase().includes(kw.toUpperCase())))||null;
-  const get  = (r,...kws) => { const k=find(...kws); return k?(r[k]??""):""; };
-  return raw.map((r,i) => {
-    const grupo  = get(r,"Grupo Cliente").toString().trim();
-    const cr     = get(r,"CR","CONTRATO").toString().trim();
-    if (!grupo||!cr) return null;
-    const statusReal = get(r,"Status Real","Status").toString().trim()||"N/A";
-    const mesVig     = get(r,"Mês Vigência","MES").toString().trim();
-    const inicioNeg  = parseData(get(r,"Inicio Negociação","Início Negociação","INICIO NEG"));
-    const dataAprov  = parseData(get(r,"Data de Aprovação","DATA APROVAÇÃO"));
-    const devido     = get(r,"Devido","DEVIDO").toString().trim();
-    const aplicado   = get(r,"Aplicado","APLICADO").toString().trim();
+  if (!raw.length) return [];
+  // Usa índice fixo baseado na ordem das colunas da planilha:
+  // 0:Mês Vigência, 1:Grupo Cliente, 2:CR, 3:DESCRI CR, 4:Responsável Farmer,
+  // 5:Status Real, 6:Tipo de Negócio, 7:Devido, 8:Aplicado,
+  // 9:Inicio Negociação, 10:Data de Aprovação, 11:Informações
+  const headers = Object.keys(raw[0]);
+  const idx = kws => {
+    const i = headers.findIndex(h => kws.some(kw => h.toUpperCase().trim() === kw.toUpperCase().trim()));
+    return i >= 0 ? i : null;
+  };
+  const idxMes    = idx(["Mês Vigência","MES VIGENCIA"]);
+  const idxGrupo  = idx(["Grupo Cliente","GRUPO CLIENTE"]);
+  const idxCR     = idx(["CR"]);
+  const idxDescr  = idx(["DESCRI CR","DESCRICAO CR","DESCRI"]);
+  const idxFarmer = idx(["Responsável Farmer","RESPONSAVEL FARMER"]);
+  const idxStatus = idx(["Status Real","STATUS REAL"]);
+  const idxTipo   = idx(["Tipo de Negócio","TIPO DE NEGOCIO"]);
+  const idxDevido = idx(["Devido","DEVIDO"]);
+  const idxAplic  = idx(["Aplicado","APLICADO"]);
+  const idxInicio = idx(["Inicio Negociação","Início Negociação","INICIO NEGOCIACAO"]);
+  const idxAprov  = idx(["Data de Aprovação","DATA DE APROVACAO"]);
+  const idxInfo   = idx(["Informações","INFORMACOES"]);
+
+  const getByIdx = (r, i) => i !== null ? (Object.values(r)[i] ?? "") : "";
+
+  return raw.map((r, i) => {
+    const grupo  = getByIdx(r, idxGrupo).toString().trim();
+    const cr     = getByIdx(r, idxCR).toString().trim();
+    // Ignora linhas sem grupo ou CR válido (número ou texto simples)
+    if (!grupo || !cr || cr.length > 20) return null;
+    const statusReal = getByIdx(r, idxStatus).toString().trim() || "N/A";
+    const mesVig     = getByIdx(r, idxMes).toString().trim();
+    const inicioNeg  = parseData(getByIdx(r, idxInicio));
+    const dataAprov  = parseData(getByIdx(r, idxAprov));
+    const devido     = getByIdx(r, idxDevido).toString().trim();
+    const aplicado   = getByIdx(r, idxAplic).toString().trim();
     const mesNum     = parseMesNum(mesVig);
-    const mesAtual   = new Date().getMonth()+1;
+    const mesAtual   = new Date().getMonth() + 1;
     let status = statusReal;
-    if (!dataAprov && inicioNeg && mesNum && mesNum>mesAtual) status="Em Negociação Antecipada";
-    else if (!dataAprov && inicioNeg) status="Em Negociação";
-    else if (!dataAprov && !inicioNeg && mesNum && mesNum>mesAtual) status="Aguardando Reajuste";
+    if (!dataAprov && inicioNeg && mesNum && mesNum > mesAtual) status = "Em Negociação Antecipada";
+    else if (!dataAprov && inicioNeg) status = "Em Negociação";
+    else if (!dataAprov && !inicioNeg && mesNum && mesNum > mesAtual) status = "Aguardando Reajuste";
     const diasNeg = dataAprov
-      ? diasEntre(inicioNeg,dataAprov)
-      : (inicioNeg ? diasEntre(inicioNeg,new Date()) : null);
+      ? diasEntre(inicioNeg, dataAprov)
+      : (inicioNeg ? diasEntre(inicioNeg, new Date()) : null);
     return {
-      _id:i, grupo, cr,
-      descr:   get(r,"DESCRI").toString().trim(),
-      tipo:    get(r,"Tipo de Negócio","Tipo").toString().trim()||"Reajuste",
-      status, statusReal, mes:mesVig,
-      farmer:  get(r,"Responsável Farmer","FARMER").toString().trim(),
-      info:    get(r,"Informações").toString().trim(),
+      _id: i, grupo, cr,
+      descr:   getByIdx(r, idxDescr).toString().trim(),
+      tipo:    getByIdx(r, idxTipo).toString().trim() || "Reajuste",
+      status, statusReal, mes: mesVig,
+      farmer:  getByIdx(r, idxFarmer).toString().trim(),
+      info:    getByIdx(r, idxInfo).toString().trim(),
       devido, aplicado, inicioNeg, dataAprov, diasNeg,
       concluido: !!dataAprov,
-      _edited:false,
+      _edited: false,
     };
   }).filter(Boolean);
-};
-
-// ─── PROCESSA PRODUTIVIDADE ───────────────────────────────────────────────────
-const matchPessoa = s => EQUIPE.find(p=>(s||"").toUpperCase().includes(p.toUpperCase()))||null;
-const matchSin    = v => {
-  const s=(v||"").toUpperCase();
-  if(s.includes("VERDE")) return "Verde";
-  if(s.includes("AMARELO")) return "Amarelo";
-  if(s.includes("VERM")) return "Vermelho";
-  return null;
-};
-const matchCatP = (ativ,tipo) => {
-  const c=((ativ||"")+" "+(tipo||"")).toUpperCase();
-  if(c.includes("REAJUSTE")||c.includes("NOTIFICAÇ")||c.includes("CARTA DE REAJUSTE")) return "Reajuste";
-  if(c.includes("RENOVAÇ")) return "Renovação";
-  if(c.includes("UP-SELLING")||c.includes("UP SELLING")||c.includes("UPSELLING")) return "Up Selling";
-  if(c.includes("DEFESA")) return "Defesa de Território";
-  if(c.includes("ALTERAÇ")&&c.includes("ESCOPO")) return "Alteração de Escopo";
-  if(c.includes("BID")||c.includes("COTAÇ")) return "BID/Cotação";
-  return "Outros";
 };
 
 const processProd = raw => {
-  const keys = raw.length?Object.keys(raw[0]):[];
-  const find = (...kws) => keys.find(k=>kws.some(kw=>k.toUpperCase().includes(kw.toUpperCase())))||null;
-  const get  = (r,...kws) => { const k=find(...kws); return k?(r[k]??""):""; };
-  return raw.map(r => {
-    const respF = get(r,"Responsável Farmer","RESP. FARMER").toString().trim();
-    const respH = get(r,"Responsável Hunter","RESP. HUNTER").toString().trim();
-    const pessoa = matchPessoa(respF)||matchPessoa(respH);
-    if (!pessoa) return null;
-    const ativ  = get(r,"ATIVIDADE","ATIVIDADE1").toString().toUpperCase().trim();
-    const tipo  = get(r,"Tipo de Negócio","TIPO DE PROPOSTA").toString().trim();
-    const status= get(r,"Status","STATUS").toString().trim();
-    const mes   = get(r,"Mês","MES").toString().trim();
-    const semana= get(r,"Semana","SEMANA").toString().trim();
-    const escopo= get(r,"Escopo Atuação","ESCOPO").toString().trim();
-    const grupo = get(r,"Grupo Cliente","GRUPO CLIENTE").toString().trim();
-    const nProp = get(r,"Nº Proposta","N PROPOSTA").toString().trim();
-    const obs   = get(r,"OBS.","OBS").toString().trim();
-    const valPleito = num(get(r,"Valor Final / Pleito","COM REAJUSTE","VALOR PROPOSTA"));
-    const valAprov  = num(get(r,"APROVADO PELO CLIENTE (R$)"));
-    return {
-      pessoa, grupo, nProp, mes, semana, escopo, obs, ativ, tipo, status,
-      valPleito, valAprov,
-      pctAceito: num(get(r,"% Reajuste Aceito","APROVADO PELO CLIENTE (%)")),
-      isRevisao: (get(r,"Nº da Revisão","Revisão")||"0").toString()!=="0",
-      sinalizacao: matchSin(get(r,"Semáforo","Sinalização")),
-      categoria: matchCatP(ativ,tipo),
+  if(!raw||!raw.length) return [];
+  const keys=Object.keys(raw[0]);
+  const col=(...kws)=>keys.find(k=>kws.some(kw=>k.toUpperCase().replace(/\s+/g," ").trim().includes(kw.toUpperCase())))||null;
+  const val=(r,...kws)=>{const k=col(...kws);return k?r[k]:"";};
+  return raw.map(r=>{
+    const ativ=(val(r,"ATIVIDADE1")||val(r,"ATIVIDADE")||"").toString().trim().toUpperCase();
+    const tipo=(val(r,"TIPO DE PROPOSTA")||"").toString().trim().toUpperCase();
+    const obs=(val(r,"OBS")||"").toString().trim();
+    const cValAtual=col("VALOR CONTRATO ATUAL");
+    const valAtual=cValAtual?numP(r[cValAtual]):0;
+    const cValPleito=col("REAJUSTE + PLEITO","COM REAJUSTE + PLEITO");
+    const cValReaj=col("VALOR CONTRATO COM REAJUSTE");
+    const valPleito=(cValPleito?numP(r[cValPleito]):0)||(cValReaj?numP(r[cValReaj]):0);
+    const row={
+      isRevisao:(val(r,"REVISÃO","REVISAO")||"").toString().toUpperCase().includes("REVIS"),
+      nProposta:(val(r,"Nº PROPOSTA","N PROPOSTA","PROPOSTA")||"").toString().trim(),
+      grupoCliente:(val(r,"GRUPO CLIENTE")||"").toString().trim(),
+      cliente:(val(r,"CLIENTE")||"").toString().trim(),
+      respFarmer:(val(r,"RESP. FARMER","RESPONSÁVEL FARMER")||"").toString().trim(),
+      respHunter:(val(r,"RESP. HUNTER","RESPONSÁVEL HUNTER")||"").toString().trim(),
+      atividade:ativ,tipoProposta:tipo,obs,
+      valAtual,valPleito,diferenca:valPleito-valAtual,
+      pctReaj:   numP(val(r,"REAJUSTE CONTRATUAL (%)")),
+      pctPleito: numP(val(r,"PLEITO (%)")),
+      aprovR:    numP(val(r,"APROVADO PELO CLIENTE (R$)")),
+      aprovPct:  numP(val(r,"APROVADO PELO CLIENTE (%)")),
+      status:(val(r,"STATUS")||"").toString().trim(),
+      mes:(val(r,"Mês","MES")||"").toString().trim(),
+      semana:(val(r,"Semana","SEMANA")||"").toString().trim(),
+      escopo:(val(r,"Escopo Atuação","ESCOPO")||"").toString().trim(),
+      sinalizacao:matchSinP(val(r,"Sinalização","SINALIZACAO","SINALIZ")||""),
+      fezPec:val(r,"FEZ PEC"),fezAbertura:val(r,"FEZ ABERTURA"),
+      fezProposta:val(r,"FEZ PROPOSTA COMERCIAL"),fezCarta:val(r,"FEZ CARTA DE REAJUSTE"),
+      fezNotif:val(r,"FEZ CARTA DE NOTIF","FEZ NOTIF"),
     };
-  }).filter(Boolean);
+    row.responsavel=matchPessoaP(row.respFarmer,row.respHunter);
+    row.categoria=matchCatP(ativ,tipo);
+    row.entregaveis=matchEntP(row);
+    return row;
+  }).filter(r=>r.responsavel);
+};
+
+const contarEntP = rows => {
+  const c={};let t=0;
+  for(const r of rows) for(const e of r.entregaveis){c[e]=(c[e]||0)+1;t++;}
+  return Object.entries(c).map(([cat,qtd])=>({cat,qtd,p:t?Math.round(qtd/t*100):0})).sort((a,b)=>b.qtd-a.qtd);
+};
+
+const clienteStatsP = (ativs) => {
+  const by={};
+  for(const r of ativs){
+    const g=r.grupoCliente||r.cliente;
+    if(!by[g]) by[g]={rows:[],sin:null};
+    by[g].rows.push(r);
+    if(!by[g].sin&&r.sinalizacao) by[g].sin=r.sinalizacao;
+  }
+  return Object.entries(by).map(([g,{rows,sin}])=>{
+    const wR=rows.filter(r=>r.pctReaj>0),wA=rows.filter(r=>r.aprovPct>0);
+    const avg=(arr,fn)=>arr.length?arr.reduce((s,r)=>s+fn(r),0)/arr.length:null;
+    return{
+      grupo:g,rows,sin,
+      avgReaj:avg(wR,r=>r.pctReaj),avgPleito:avg(wR,r=>r.pctPleito),avgAprov:avg(wA,r=>r.aprovPct),
+      totalAtual:rows.reduce((s,r)=>s+r.valAtual,0),
+      totalPleito:rows.reduce((s,r)=>s+r.valPleito,0),
+      totalDif:rows.reduce((s,r)=>s+r.diferenca,0),
+    };
+  }).sort((a,b)=>b.rows.length-a.rows.length);
 };
 
 // ─── EXPORTAR ─────────────────────────────────────────────────────────────────
@@ -305,62 +338,6 @@ const Pill = ({ label, active, onClick, color }) => (
     whiteSpace:"nowrap",
   }}>{label}</button>
 );
-
-// ─── FILTRO LATERAL (para Produtividade) ──────────────────────────────────────
-const FiltroLateral = ({ data, filtros, setFiltros }) => {
-  const mesesDisp  = ORDEM_MES.filter(m=>data.some(r=>r.mes.toLowerCase().includes(m.substring(0,3).toLowerCase())));
-  const semanasDisp= [...new Set(data.map(r=>r.semana).filter(Boolean))].sort();
-  const scopesDisp = [...new Set(data.map(r=>r.escopo).filter(Boolean))].sort();
-
-  const toggle = (field, val) => setFiltros(prev=>{
-    const s = new Set(prev[field]);
-    s.has(val)?s.delete(val):s.add(val);
-    return {...prev,[field]:s};
-  });
-  const clear = field => setFiltros(prev=>({...prev,[field]:new Set()}));
-
-  const Section = ({ label, field, items, colorMap }) => (
-    <div style={{marginBottom:16}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-        <span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,.35)",
-                      textTransform:"uppercase",letterSpacing:".08em"}}>{label}</span>
-        {filtros[field].size>0&&(
-          <button onClick={()=>clear(field)} style={{fontSize:9,color:"rgba(255,255,255,.3)",
-            background:"none",border:"none",cursor:"pointer",padding:0}}>limpar</button>
-        )}
-      </div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-        {items.map(item=>(
-          <button key={item} onClick={()=>toggle(field,item)} style={{
-            padding:"3px 9px",borderRadius:99,border:"none",cursor:"pointer",
-            fontFamily:"inherit",fontSize:11,fontWeight:500,transition:"all .15s",
-            background:filtros[field].has(item)?(colorMap?.[item]||"#60A5FA"):"rgba(255,255,255,.08)",
-            color:filtros[field].has(item)?"#fff":"rgba(255,255,255,.5)",
-            whiteSpace:"nowrap",
-          }}>{item}</button>
-        ))}
-      </div>
-    </div>
-  );
-
-  return (
-    <div style={{padding:"16px 12px",borderTop:"1px solid rgba(255,255,255,.08)",
-                 overflowY:"auto",flex:1}}>
-      <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,.3)",
-                   textTransform:"uppercase",letterSpacing:".1em",marginBottom:14}}>Filtros</div>
-      <Section label="Analista" field="pessoa"
-        items={EQUIPE} colorMap={COR_P}/>
-      <Section label="Status" field="status"
-        items={["Aprovado","Em Negociação","Recusado"]}/>
-      <Section label="Mês" field="mes" items={mesesDisp}/>
-      <Section label="Semana" field="semana" items={semanasDisp}/>
-      <Section label="Escopo" field="escopo" items={scopesDisp}/>
-      <Section label="Semáforo" field="sin"
-        items={["Verde","Amarelo","Vermelho"]} colorMap={SIN_COR}/>
-      <Section label="Tipo" field="cat" items={TIPO_P} colorMap={TIPO_COR_P}/>
-    </div>
-  );
-};
 
 // ─── GERENCIAL ────────────────────────────────────────────────────────────────
 function SecaoGerencial({ data, setData }) {
@@ -652,90 +629,392 @@ function SecaoGerencial({ data, setData }) {
   );
 }
 
-// ─── PRODUTIVIDADE ────────────────────────────────────────────────────────────
-function SecaoProdutividade({ data, subPag, filtros }) {
-  const filt = data.filter(r => {
-    if (filtros.pessoa.size>0&&!filtros.pessoa.has(r.pessoa)) return false;
-    if (filtros.mes.size>0&&![...filtros.mes].some(m=>r.mes.toLowerCase().includes(m.substring(0,3).toLowerCase()))) return false;
-    if (filtros.semana.size>0&&!filtros.semana.has(r.semana)) return false;
-    if (filtros.escopo.size>0&&!filtros.escopo.has(r.escopo)) return false;
-    if (filtros.sin.size>0&&!filtros.sin.has(r.sinalizacao)) return false;
-    if (filtros.cat.size>0&&!filtros.cat.has(r.categoria)) return false;
-    if (filtros.status.size>0) {
-      const isAprov = r.status.toUpperCase().includes("APROVADO");
-      const isNeg   = r.status.toUpperCase().includes("NEGOCI");
-      const isRecus = r.status.toUpperCase().includes("RECUS");
-      if (filtros.status.has("Aprovado")&&!isAprov) return false;
-      if (filtros.status.has("Em Negociação")&&!isNeg) return false;
-      if (filtros.status.has("Recusado")&&!isRecus) return false;
-    }
-    return true;
-  });
+// ─── PRODUTIVIDADE (baseada no app original) ──────────────────────────────────
+const CAT_COM   = ["Reajuste","Renovação","Up Selling","Defesa de Território","Alteração de Escopo","Outros"];
+const CAT_COM_C = { "Reajuste":"#7C3AED","Renovação":"#0891B2","Up Selling":"#059669","Defesa de Território":"#D97706","Alteração de Escopo":"#0369A1","Outros":"#6B7280" };
+const CAT_ENT_C = { "PEC":"#0369A1","Abertura de Custo":"#059669","Proposta Comercial":"#D97706","Carta de Reajuste":"#7C3AED","Notificação de Reajuste":"#DC2626","Revisão de Escopo":"#0891B2" };
+const SIN_C2    = { verde:"#16A34A",amarelo:"#D97706",vermelho:"#DC2626" };
+const SIN_BG2   = { verde:"#DCFCE7",amarelo:"#FEF9C3",vermelho:"#FEE2E2" };
+const SIN_LB2   = { verde:"Boa Negociação",amarelo:"Moderada",vermelho:"Difícil" };
+const COLORS2   = { MARIANA:"#7C3AED",WILDER:"#0369A1",GIOVANNI:"#059669",CARLA:"#D97706",DARLAN:"#DC2626" };
 
-  // ── VISÃO GERAL ─────────────────────────────────────────────────────────────
-  if (subPag==="visao") {
-    const somaAprov  = filt.reduce((s,r)=>s+r.valAprov,0);
-    const somaPleito = filt.reduce((s,r)=>s+r.valPleito,0);
-    const proprias   = filt.filter(r=>!r.isRevisao);
-    const aprovadas  = filt.filter(r=>r.status.toUpperCase().includes("APROVADO"));
-    const txAprov    = proprias.length>0?Math.round(aprovadas.length/proprias.length*100):0;
+const fmtPct2 = v => (v!=null&&v!==""&&!isNaN(v)&&parseFloat(v)!==0)?`${(parseFloat(v)*100).toFixed(1)}%`:"—";
+
+// Reprocessa dados de produtividade com lógica completa do original
+const processProdFull = raw => {
+  if (!raw?.length) return [];
+  const keys = Object.keys(raw[0]);
+  const col = (...kws) => keys.find(k => kws.some(kw => k.toUpperCase().replace(/\s+/g," ").trim().includes(kw.toUpperCase()))) || null;
+  const val = (r, ...kws) => { const k=col(...kws); return k ? r[k] : ""; };
+  return raw.map(r => {
+    const ativ = (val(r,"ATIVIDADE1")||val(r,"ATIVIDADE")||"").toString().trim().toUpperCase();
+    const tipo = (val(r,"TIPO DE PROPOSTA")||"").toString().trim().toUpperCase();
+    const obs  = (val(r,"OBS")||"").toString().trim();
+    const cValAtual  = col("VALOR CONTRATO ATUAL");
+    const cValPleito = col("REAJUSTE + PLEITO","COM REAJUSTE + PLEITO");
+    const cValReaj   = col("VALOR CONTRATO COM REAJUSTE");
+    const valAtual   = cValAtual ? num(r[cValAtual]) : 0;
+    const valPleito  = (cValPleito ? num(r[cValPleito]) : 0) || (cValReaj ? num(r[cValReaj]) : 0);
+    const semana = (val(r,"SEMANA")||"").toString().trim();
+    const isRevisao = (val(r,"REVISÃO","REVISAO")||"").toString().toUpperCase().includes("REVIS");
+    const row = {
+      isRevisao,
+      nProposta:    (val(r,"Nº PROPOSTA","N PROPOSTA","PROPOSTA")||"").toString().trim(),
+      grupoCliente: (val(r,"GRUPO CLIENTE")||"").toString().trim(),
+      cliente:      (val(r,"CLIENTE")||"").toString().trim(),
+      respFarmer:   (val(r,"RESP. FARMER","RESPONSÁVEL FARMER")||"").toString().trim(),
+      respHunter:   (val(r,"RESP. HUNTER","RESPONSÁVEL HUNTER")||"").toString().trim(),
+      atividade:ativ, tipoProposta:tipo, obs, semana,
+      valAtual, valPleito, diferenca: valPleito - valAtual,
+      pctReaj:   num(val(r,"REAJUSTE CONTRATUAL (%)")),
+      pctPleito: num(val(r,"PLEITO (%)")),
+      aprovR:    num(val(r,"APROVADO PELO CLIENTE (R$)")),
+      aprovPct:  num(val(r,"APROVADO PELO CLIENTE (%)")),
+      status:    (val(r,"STATUS")||"").toString().trim(),
+      mes:       (val(r,"Mês","MES")||"").toString().trim(),
+      sinalizacao: matchSin((val(r,"Sinalização","SINALIZACAO","SINALIZ")||"")),
+      escopo:    (val(r,"Escopo Atuação","ESCOPO")||"").toString().trim(),
+      fezPec:      val(r,"FEZ PEC"),
+      fezAbertura: val(r,"FEZ ABERTURA"),
+      fezProposta: val(r,"FEZ PROPOSTA COMERCIAL"),
+      fezCarta:    val(r,"FEZ CARTA DE REAJUSTE"),
+      fezNotif:    val(r,"FEZ CARTA DE NOTIF","FEZ NOTIF"),
+    };
+    row.responsavel = matchPessoa(row.respFarmer) || matchPessoa(row.respHunter) || null;
+    row.categoria   = matchCatP(ativ, tipo);
+    // entregaveis
+    const found = new Set();
+    const isSim = v => ["SIM","S"].includes((v||"").toString().toUpperCase().trim());
+    if(isSim(row.fezPec))      found.add("PEC");
+    if(isSim(row.fezAbertura)) found.add("Abertura de Custo");
+    if(isSim(row.fezProposta)) found.add("Proposta Comercial");
+    if(isSim(row.fezCarta))    found.add("Carta de Reajuste");
+    if(isSim(row.fezNotif))    found.add("Notificação de Reajuste");
+    if (!found.size) {
+      const a=ativ, o=(obs||"").toUpperCase();
+      if(a.includes("PEC")||o.includes("PEC"))                             found.add("PEC");
+      if(a.includes("ABERTURA")||o.includes("ABERTURA DE CUSTO"))          found.add("Abertura de Custo");
+      if(a.includes("PROPOSTA COMERCIAL")||o.includes("PROPOSTA COMERCIAL"))found.add("Proposta Comercial");
+      if(a.includes("CARTA DE REAJUSTE")||o.includes("CARTA DE REAJUSTE")) found.add("Carta de Reajuste");
+      if(a.includes("NOTIFICAÇ")||o.includes("NOTIFICAÇ"))                 found.add("Notificação de Reajuste");
+      if(a.includes("REVISÃO DE ESCOPO")||o.includes("REVISÃO DE ESCOPO")) found.add("Revisão de Escopo");
+    }
+    row.entregaveis = found.size ? [...found] : [];
+    return row;
+  }).filter(r => r.responsavel);
+};
+
+const TagP = ({label, color}) => (
+  <span style={{fontSize:9,padding:"2px 7px",background:`${color}15`,color,
+                border:`1px solid ${color}30`,whiteSpace:"nowrap",borderRadius:4,fontWeight:500}}>{label}</span>
+);
+
+const BarP = ({p, color}) => (
+  <div style={{flex:1,height:5,background:"#F1F4F8",borderRadius:3,overflow:"hidden"}}>
+    <div style={{width:`${Math.min(p,100)}%`,height:"100%",background:color,borderRadius:3,transition:"width .4s"}}/>
+  </div>
+);
+
+function SecaoProdutividade({ rawData, subPag, setSubPag }) {
+  const data = React.useMemo(() => processProdFull(rawData), [rawData]);
+  const [fResp, setFResp] = useState("Todos");
+  const [fStat, setFStat] = useState("Todos");
+  const [fCat,  setFCat]  = useState("Todas");
+  const [fSin,  setFSin]  = useState("Todos");
+  const [fMes,  setFMes]  = useState("Todos");
+  const [fSem,  setFSem]  = useState("Todas");
+  const [fEsc,  setFEsc]  = useState("Todos");
+  const [obsOpen, setObsOpen] = useState(null);
+
+  const ativs   = data.filter(r => !r.isRevisao);
+  const revs    = data.filter(r => r.isRevisao);
+  const mesesDisp  = ORDEM_MES.filter(m => data.some(r => r.mes === m));
+  const semanasDisp = [...new Set(data.map(r=>r.semana).filter(Boolean))].sort();
+  const escoposDisp = [...new Set(data.map(r=>r.escopo).filter(Boolean))].sort();
+
+  const applyMesSem = rows => {
+    let r = rows;
+    if (fMes !== "Todos") r = r.filter(x => x.mes === fMes);
+    if (fSem !== "Todas") r = r.filter(x => x.semana === fSem);
+    return r;
+  };
+  const applyStatus = rows => {
+    if (fStat === "Aprovado")      return rows.filter(r => r.status.toUpperCase().includes("APROVADO"));
+    if (fStat === "Em Negociação") return rows.filter(r => r.status.toUpperCase().includes("NEGOCI"));
+    if (fStat === "Recusado")      return rows.filter(r => r.status.toUpperCase().includes("RECUS"));
+    return rows;
+  };
+  const filterRows = rows => {
+    let r = applyMesSem(rows);
+    if (fResp !== "Todos") r = r.filter(x => x.responsavel === fResp);
+    r = applyStatus(r);
+    if (fCat !== "Todas") r = r.filter(x => x.categoria === fCat);
+    if (fEsc !== "Todos") r = r.filter(x => x.escopo === fEsc);
+    return r;
+  };
+
+  const clienteStats = () => {
+    const base = applyMesSem(applyStatus(ativs));
+    const by = {};
+    for (const r of base) {
+      const g = r.grupoCliente || r.cliente;
+      if (!by[g]) by[g] = {rows:[],sin:null};
+      by[g].rows.push(r);
+      if (!by[g].sin && r.sinalizacao) by[g].sin = r.sinalizacao;
+    }
+    return Object.entries(by).map(([g,{rows,sin}]) => {
+      const wR = rows.filter(r=>r.pctReaj>0), wA = rows.filter(r=>r.aprovPct>0);
+      const avg = (arr,fn) => arr.length ? arr.reduce((s,r)=>s+fn(r),0)/arr.length : null;
+      return {
+        grupo:g, rows, sin,
+        avgReaj:   avg(wR, r=>r.pctReaj),
+        avgPleito: avg(wR, r=>r.pctPleito),
+        avgAprov:  avg(wA, r=>r.aprovPct),
+        totalAtual:  rows.reduce((s,r)=>s+r.valAtual,0),
+        totalPleito: rows.reduce((s,r)=>s+r.valPleito,0),
+        totalDif:    rows.reduce((s,r)=>s+r.diferenca,0),
+      };
+    }).sort((a,b) => b.rows.length - a.rows.length);
+  };
+
+  const contarEnt = rows => {
+    const c = {}; let t = 0;
+    for (const r of rows) for (const e of r.entregaveis) { c[e]=(c[e]||0)+1; t++; }
+    return Object.entries(c).map(([cat,qtd]) => ({cat,qtd,p:t?Math.round(qtd/t*100):0})).sort((a,b)=>b.qtd-a.qtd);
+  };
+
+  const PillP = ({label, active, color, onClick}) => (
+    <button onClick={onClick} style={{
+      padding:"4px 12px", borderRadius:99, border:"none", cursor:"pointer",
+      fontFamily:"inherit", fontSize:11, fontWeight:500, transition:"all .15s",
+      background: active ? (color||DARK) : "#F1F4F8",
+      color:      active ? "#fff" : "#64748B",
+      whiteSpace:"nowrap",
+    }}>{label}</button>
+  );
+
+  const filtros = (
+    <div style={{background:"#fff",borderRadius:10,padding:"10px 14px",marginBottom:16,
+                 display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",
+                 boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>
+      {/* Status */}
+      <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+        <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>STATUS</span>
+        {["Todos","Aprovado","Em Negociação","Recusado"].map(s=>(
+          <PillP key={s} label={s} active={fStat===s} onClick={()=>setFStat(s)}/>
+        ))}
+      </div>
+      <div style={{width:1,height:20,background:"#E2E8F0"}}/>
+      {/* Mês */}
+      <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+        <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>MÊS</span>
+        <PillP label="Todos" active={fMes==="Todos"} onClick={()=>setFMes("Todos")}/>
+        {mesesDisp.map(m=><PillP key={m} label={m} active={fMes===m} onClick={()=>setFMes(m)}/>)}
+      </div>
+      <div style={{width:1,height:20,background:"#E2E8F0"}}/>
+      {/* Semana */}
+      <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+        <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>SEMANA</span>
+        <PillP label="Todas" active={fSem==="Todas"} onClick={()=>setFSem("Todas")}/>
+        {semanasDisp.map(s=><PillP key={s} label={s} active={fSem===s} onClick={()=>setFSem(s)}/>)}
+      </div>
+      <div style={{width:1,height:20,background:"#E2E8F0"}}/>
+      {/* Responsável */}
+      <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+        <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>ANALISTA</span>
+        {["Todos","MARIANA","WILDER","GIOVANNI","CARLA","DARLAN"].map(p=>(
+          <PillP key={p} label={p==="Todos"?"Todos":p.charAt(0)+p.slice(1).toLowerCase()}
+            active={fResp===p} color={COLORS2[p]} onClick={()=>setFResp(p)}/>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ── VISÃO GERAL ──────────────────────────────────────────────────────────────
+  if (subPag === "visao") {
+    const base      = applyMesSem(applyStatus(ativs));
+    const cStats    = clienteStats();
+    const scopeCat  = cat => base.filter(r => r.categoria === cat);
+
     return (
       <div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
+        {/* Filtros simplificados visão geral */}
+        <div style={{background:"#fff",borderRadius:10,padding:"10px 14px",marginBottom:16,
+                     display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",
+                     boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>
+          <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+            <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>STATUS</span>
+            {["Todos","Aprovado","Em Negociação"].map(s=>(
+              <PillP key={s} label={s} active={fStat===s} onClick={()=>setFStat(s)}/>
+            ))}
+          </div>
+          <div style={{width:1,height:20,background:"#E2E8F0"}}/>
+          <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+            <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>MÊS</span>
+            <PillP label="Todos" active={fMes==="Todos"} onClick={()=>setFMes("Todos")}/>
+            {mesesDisp.map(m=><PillP key={m} label={m} active={fMes===m} onClick={()=>setFMes(m)}/>)}
+          </div>
+          <div style={{width:1,height:20,background:"#E2E8F0"}}/>
+          <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+            <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>SEMANA</span>
+            <PillP label="Todas" active={fSem==="Todas"} onClick={()=>setFSem("Todas")}/>
+            {semanasDisp.map(s=><PillP key={s} label={s} active={fSem===s} onClick={()=>setFSem(s)}/>)}
+          </div>
+        </div>
+
+        {/* KPIs */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:20}}>
           {[
-            {l:"Propostas",v:proprias.length,icon:"📋"},
-            {l:"Valor em negociação",v:brl(somaPleito),icon:"🎯"},
-            {l:"Valor aprovado",v:brl(somaAprov),icon:"✅",hl:"#16A34A"},
-            {l:"Taxa de aprovação",v:`${txAprov}%`,icon:"📈",hl:txAprov>50?"#16A34A":"#D97706"},
-          ].map(k=>(
-            <div key={k.l} style={{background:"#fff",borderRadius:12,padding:"16px 18px",
+            {l:"Atividades",      v:base.length},
+            {l:"Revisões",        v:revs.length},
+            {l:"Valor Atual",     v:brl(base.reduce((s,r)=>s+r.valAtual,0))},
+            {l:"Valor c/ Pleito", v:brl(base.reduce((s,r)=>s+r.valPleito,0))},
+            {l:"Ganho Potencial", v:brl(base.reduce((s,r)=>s+r.diferenca,0)), hl:true},
+          ].map(i=>(
+            <div key={i.l} style={{background:"#fff",borderRadius:10,padding:"14px 16px",
                                     boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-              <div style={{fontSize:20,marginBottom:8}}>{k.icon}</div>
-              <div style={{fontSize:11,color:"#94A3B8",marginBottom:4}}>{k.l}</div>
-              <div style={{fontSize:20,fontWeight:700,color:k.hl||DARK}}>{k.v}</div>
+              <div style={{fontSize:10,color:"#94A3B8",marginBottom:4}}>{i.l}</div>
+              <div style={{fontSize:18,fontWeight:700,color:i.hl?"#16A34A":DARK}}>{i.v}</div>
             </div>
           ))}
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16}}>
-          {EQUIPE.filter(p=>filt.some(r=>r.pessoa===p)).map(p=>{
-            const rows=filt.filter(r=>r.pessoa===p);
-            const propP=rows.filter(r=>!r.isRevisao);
-            const aprovP=rows.filter(r=>r.status.toUpperCase().includes("APROVADO"));
-            const porCat=TIPO_P.map(cat=>({cat,n:rows.filter(r=>r.categoria===cat).length})).filter(x=>x.n>0);
-            return(
-              <div key={p} style={{background:"#fff",borderRadius:14,padding:20,
-                                    borderTop:`3px solid ${COR_P[p]}`,
-                                    boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:14}}>
+
+        {/* Analistas */}
+        <div style={{fontSize:11,fontWeight:600,letterSpacing:".06em",textTransform:"uppercase",
+                     color:"#94A3B8",marginBottom:12}}>Analistas</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:24}}>
+          {["MARIANA","WILDER","GIOVANNI"].map(p => {
+            const sp    = base.filter(r=>r.responsavel===p);
+            const revP  = revs.filter(r=>r.responsavel===p);
+            const aprov = sp.filter(r=>r.status.toUpperCase().includes("APROVADO"));
+            const cor   = COLORS2[p];
+            return (
+              <div key={p} style={{background:"#fff",borderRadius:12,padding:18,
+                                    borderTop:`3px solid ${cor}`,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
                   <div>
-                    <div style={{fontSize:11,color:"#94A3B8",marginBottom:3}}>Analista</div>
-                    <div style={{fontSize:17,fontWeight:700,color:COR_P[p]}}>{p}</div>
-                    <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>
-                      {propP.length} proposta{propP.length!==1?"s":""} · {rows.filter(r=>r.isRevisao).length} revisões
+                    <div style={{fontSize:10,color:"#94A3B8",marginBottom:2}}>Analista</div>
+                    <div style={{fontSize:16,fontWeight:700,color:cor}}>{p.charAt(0)+p.slice(1).toLowerCase()}</div>
+                    <div style={{fontSize:10,color:"#94A3B8",marginTop:2}}>
+                      {sp.length} atividades · {revP.length} revisões
                     </div>
                   </div>
                   <div style={{background:"#DCFCE7",borderRadius:8,padding:"4px 10px",textAlign:"center"}}>
-                    <div style={{fontSize:17,fontWeight:700,color:"#16A34A"}}>{aprovP.length}</div>
-                    <div style={{fontSize:10,color:"#16A34A"}}>aprovados</div>
+                    <div style={{fontSize:16,fontWeight:700,color:"#16A34A"}}>{aprov.length}</div>
+                    <div style={{fontSize:9,color:"#16A34A"}}>aprovados</div>
                   </div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:12}}>
                   {[
-                    {l:"Valor pleito",v:brl(rows.reduce((s,r)=>s+r.valPleito,0))},
-                    {l:"Valor aprovado",v:brl(rows.reduce((s,r)=>s+r.valAprov,0)),hl:true},
+                    {l:"Contrato Atual", v:brl(sp.reduce((s,r)=>s+r.valAtual,0))},
+                    {l:"Com Pleito",     v:brl(sp.reduce((s,r)=>s+r.valPleito,0))},
+                    {l:"Diferença",      v:brl(sp.reduce((s,r)=>s+r.diferenca,0)), hl:true},
                   ].map(k=>(
-                    <div key={k.l} style={{background:"#F8FAFC",borderRadius:8,padding:"8px 10px"}}>
-                      <div style={{fontSize:10,color:"#94A3B8",marginBottom:2}}>{k.l}</div>
-                      <div style={{fontSize:12,fontWeight:600,color:k.hl?"#16A34A":DARK}}>{k.v}</div>
+                    <div key={k.l} style={{background:"#F8FAFC",borderRadius:8,padding:"7px 8px"}}>
+                      <div style={{fontSize:9,color:"#94A3B8",marginBottom:2}}>{k.l}</div>
+                      <div style={{fontSize:11,fontWeight:600,color:k.hl?"#16A34A":DARK}}>{k.v}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{borderTop:"1px solid #F1F4F8",paddingTop:10}}>
+                  <div style={{fontSize:9,color:"#94A3B8",marginBottom:6,textTransform:"uppercase",letterSpacing:".06em"}}>Por Tipo</div>
+                  {CAT_COM.map(cat=>{
+                    const d=sp.filter(r=>r.categoria===cat);
+                    if(!d.length) return null;
+                    const dif=d.reduce((s,r)=>s+r.diferenca,0);
+                    return(
+                      <div key={cat} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                        <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          <div style={{width:6,height:6,borderRadius:99,background:CAT_COM_C[cat]}}/>
+                          <span style={{fontSize:11,color:"#64748B"}}>{cat}</span>
+                        </div>
+                        <div style={{display:"flex",gap:8}}>
+                          <span style={{fontSize:11,color:cor}}>{d.length}x</span>
+                          <span style={{fontSize:11,color:"#16A34A",minWidth:60,textAlign:"right"}}>{dif>0?brl(dif):"—"}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Liderança */}
+        <div style={{fontSize:11,fontWeight:600,letterSpacing:".06em",textTransform:"uppercase",
+                     color:"#94A3B8",marginBottom:12}}>Liderança</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14,marginBottom:24}}>
+          {["CARLA","DARLAN"].map(p=>{
+            const sp   = base.filter(r=>r.responsavel===p);
+            const revP = revs.filter(r=>r.responsavel===p);
+            const aprov= sp.filter(r=>r.status.toUpperCase().includes("APROVADO"));
+            const cor  = COLORS2[p];
+            const porCat = CAT_COM.map(cat=>({cat,n:sp.filter(r=>r.categoria===cat).length})).filter(x=>x.n>0);
+            return (
+              <div key={p} style={{background:"#fff",borderRadius:12,padding:18,
+                                    borderTop:`3px solid ${cor}`,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
+                  <div>
+                    <div style={{fontSize:10,color:"#94A3B8",marginBottom:2}}>Liderança</div>
+                    <div style={{fontSize:16,fontWeight:700,color:cor}}>{p.charAt(0)+p.slice(1).toLowerCase()}</div>
+                    <div style={{fontSize:10,color:"#94A3B8",marginTop:2}}>{sp.length} interações · {revP.length} revisões</div>
+                  </div>
+                  <div style={{background:"#DCFCE7",borderRadius:8,padding:"4px 10px",textAlign:"center"}}>
+                    <div style={{fontSize:16,fontWeight:700,color:"#16A34A"}}>{aprov.length}</div>
+                    <div style={{fontSize:9,color:"#16A34A"}}>aprovados</div>
+                  </div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:10}}>
+                  {[
+                    {l:"Interações",  v:sp.length},
+                    {l:"Atual",       v:brl(sp.reduce((s,r)=>s+r.valAtual,0))},
+                    {l:"Com Pleito",  v:brl(sp.reduce((s,r)=>s+r.valPleito,0))},
+                    {l:"Diferença",   v:brl(sp.reduce((s,r)=>s+r.diferenca,0)), hl:true},
+                  ].map(k=>(
+                    <div key={k.l} style={{background:"#F8FAFC",borderRadius:8,padding:"7px 8px"}}>
+                      <div style={{fontSize:9,color:"#94A3B8",marginBottom:2}}>{k.l}</div>
+                      <div style={{fontSize:11,fontWeight:600,color:k.hl?"#16A34A":DARK}}>{k.v}</div>
                     </div>
                   ))}
                 </div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
                   {porCat.map(({cat,n})=>(
-                    <span key={cat} style={{fontSize:10,fontWeight:600,padding:"2px 7px",borderRadius:99,
-                      background:`${TIPO_COR_P[cat]||"#6B7280"}18`,color:TIPO_COR_P[cat]||"#6B7280",
-                      border:`1px solid ${TIPO_COR_P[cat]||"#6B7280"}30`}}>{cat} ({n})</span>
+                    <TagP key={cat} label={`${cat} ${n}×`} color={CAT_COM_C[cat]||"#6B7280"}/>
                   ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Semáforo */}
+        <div style={{fontSize:11,fontWeight:600,letterSpacing:".06em",textTransform:"uppercase",
+                     color:"#94A3B8",marginBottom:12}}>Semáforo de Clientes</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
+          {["verde","amarelo","vermelho"].map(sin=>{
+            const list=cStats.filter(c=>c.sin===sin);
+            return(
+              <div key={sin} style={{background:"#fff",borderRadius:12,padding:16,
+                                      borderTop:`3px solid ${SIN_C2[sin]}`,
+                                      boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                  <div style={{display:"flex",alignItems:"center",gap:7}}>
+                    <div style={{width:9,height:9,borderRadius:99,background:SIN_C2[sin]}}/>
+                    <span style={{fontSize:13,fontWeight:600,color:SIN_C2[sin]}}>{SIN_LB2[sin]}</span>
+                  </div>
+                  <div style={{fontSize:22,fontWeight:800,color:SIN_C2[sin]}}>{list.length}</div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {list.slice(0,5).map(c=>(
+                    <div key={c.grupo} style={{display:"flex",justifyContent:"space-between",
+                      padding:"5px 10px",background:SIN_BG2[sin],borderRadius:6}}>
+                      <span style={{fontSize:11,color:SIN_C2[sin],fontWeight:500}}>{c.grupo}</span>
+                      <span style={{fontSize:10,color:SIN_C2[sin]}}>{c.rows.length}×</span>
+                    </div>
+                  ))}
+                  {list.length>5&&<div style={{fontSize:10,color:"#94A3B8",textAlign:"center",paddingTop:3}}>+{list.length-5} grupos</div>}
+                  {!list.length&&<div style={{fontSize:11,color:"#94A3B8",textAlign:"center",padding:"10px 0"}}>Nenhum classificado</div>}
                 </div>
               </div>
             );
@@ -745,114 +1024,313 @@ function SecaoProdutividade({ data, subPag, filtros }) {
     );
   }
 
-  // ── POR CLIENTE ──────────────────────────────────────────────────────────────
-  if (subPag==="clientes") {
-    const grupos = (()=>{
-      const by={};
-      filt.forEach(r=>{
-        if(!by[r.grupo])by[r.grupo]={rows:[],sin:null};
-        by[r.grupo].rows.push(r);
-        if(!by[r.grupo].sin&&r.sinalizacao)by[r.grupo].sin=r.sinalizacao;
-      });
-      return Object.entries(by).map(([g,{rows,sin}])=>({g,rows,sin})).sort((a,b)=>a.g.localeCompare(b.g));
-    })();
+  // ── ESFORÇO ──────────────────────────────────────────────────────────────────
+  if (subPag === "esforco") {
+    const base     = applyMesSem(data);
+    const analBase = base.filter(r => ["MARIANA","WILDER","GIOVANNI"].includes(r.responsavel));
+    const entGeral = contarEnt(analBase);
     return (
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {grupos.map(({g,rows,sin})=>{
-          const aprov=rows.filter(r=>r.status.toUpperCase().includes("APROVADO")).length;
-          return(
-            <div key={g} style={{background:"#fff",borderRadius:12,overflow:"hidden",
-                                  boxShadow:"0 1px 4px rgba(0,0,0,.07)",
-                                  borderLeft:`4px solid ${sin?SIN_COR[sin]:"#E2E8F0"}`}}>
-              <div style={{padding:"12px 18px",display:"flex",alignItems:"center",
-                            justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <span style={{fontSize:14,fontWeight:700,color:DARK}}>{g}</span>
-                  {sin&&<span style={{fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:99,
-                    background:SIN_BG[sin],color:SIN_COR[sin]}}>{sin}</span>}
-                  <span style={{fontSize:11,color:"#94A3B8"}}>{rows.length} interações</span>
+      <div>
+        {filtros}
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:11,fontWeight:600,letterSpacing:".06em",color:"#94A3B8",
+                       textTransform:"uppercase",marginBottom:4}}>Esforço Operacional</div>
+          <div style={{fontSize:20,fontWeight:700,color:DARK}}>
+            Mesa de <span style={{color:"#2563EB"}}>Trabalho</span>
+          </div>
+          <div style={{fontSize:12,color:"#94A3B8",marginTop:2}}>{analBase.length} interações no período</div>
+        </div>
+
+        {/* Distribuição geral */}
+        <div style={{background:"#fff",borderRadius:12,padding:18,marginBottom:16,
+                     boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#94A3B8",textTransform:"uppercase",
+                       letterSpacing:".06em",marginBottom:14}}>Distribuição do Time</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            {entGeral.map(({cat,qtd,p})=>(
+              <div key={cat} style={{padding:"10px 14px",background:"#F8FAFC",borderRadius:8,
+                                     borderLeft:`4px solid ${CAT_ENT_C[cat]||"#94A3B8"}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                  <span style={{fontSize:12,fontWeight:500,color:CAT_ENT_C[cat]||DARK}}>{cat}</span>
+                  <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                    <span style={{fontSize:11,color:"#94A3B8"}}>{qtd}×</span>
+                    <span style={{fontSize:15,fontWeight:700,color:DARK}}>{p}%</span>
+                  </div>
                 </div>
-                <div style={{display:"flex",gap:20}}>
-                  {[
-                    {l:"Valor pleito",v:brl(rows.reduce((s,r)=>s+r.valPleito,0))},
-                    {l:"Valor aprovado",v:brl(rows.reduce((s,r)=>s+r.valAprov,0)),c:"#16A34A"},
-                    {l:"Aprovações",v:`${aprov}/${rows.length}`},
-                  ].map(k=>(
-                    <div key={k.l} style={{textAlign:"right"}}>
-                      <div style={{fontSize:10,color:"#94A3B8",marginBottom:2}}>{k.l}</div>
-                      <div style={{fontSize:13,fontWeight:600,color:k.c||DARK}}>{k.v}</div>
-                    </div>
-                  ))}
-                </div>
+                <BarP p={p} color={CAT_ENT_C[cat]||"#94A3B8"}/>
               </div>
-            </div>
-          );
-        })}
-        {!grupos.length&&<div style={{background:"#fff",borderRadius:12,padding:"48px 0",
-          textAlign:"center",color:"#94A3B8",fontSize:14}}>Nenhum cliente encontrado.</div>}
+            ))}
+          </div>
+        </div>
+
+        {/* Por analista */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
+          {["MARIANA","WILDER","GIOVANNI"].map(p=>{
+            const rows  = applyMesSem(data).filter(r=>r.responsavel===p);
+            const ents  = contarEnt(rows);
+            const cor   = COLORS2[p];
+            return(
+              <div key={p} style={{background:"#fff",borderRadius:12,padding:18,
+                                    borderTop:`3px solid ${cor}`,boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+                <div style={{marginBottom:14}}>
+                  <div style={{fontSize:10,color:"#94A3B8",marginBottom:2}}>Analista</div>
+                  <div style={{fontSize:16,fontWeight:700,color:cor}}>{p.charAt(0)+p.slice(1).toLowerCase()}</div>
+                  <div style={{fontSize:10,color:"#94A3B8",marginTop:2}}>
+                    {rows.filter(r=>!r.isRevisao).length} atividades · {rows.filter(r=>r.isRevisao).length} revisões
+                  </div>
+                </div>
+                {!ents.length&&<div style={{color:"#94A3B8",fontSize:12}}>Sem checklist preenchido</div>}
+                {ents.map(({cat,qtd,p:pr})=>(
+                  <div key={cat} style={{marginBottom:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <div style={{width:8,height:8,borderRadius:99,background:CAT_ENT_C[cat]||"#94A3B8"}}/>
+                        <span style={{fontSize:12,color:"#64748B"}}>{cat}</span>
+                      </div>
+                      <div style={{display:"flex",gap:8}}>
+                        <span style={{fontSize:11,color:"#94A3B8"}}>{qtd}×</span>
+                        <span style={{fontSize:12,fontWeight:600,color:cor}}>{pr}%</span>
+                      </div>
+                    </div>
+                    <BarP p={pr} color={cor}/>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
 
-  // ── HISTÓRICO ────────────────────────────────────────────────────────────────
+  // ── POR CLIENTE ───────────────────────────────────────────────────────────────
+  if (subPag === "clientes") {
+    const cStats  = clienteStats();
+    const filtered = fSin==="Todos" ? cStats : cStats.filter(c=>c.sin===fSin);
+    return (
+      <div>
+        {filtros}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+            <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>SEMÁFORO</span>
+            {["Todos","verde","amarelo","vermelho"].map(s=>(
+              <button key={s} onClick={()=>setFSin(s)} style={{
+                padding:"4px 12px",borderRadius:99,border:"none",cursor:"pointer",
+                fontFamily:"inherit",fontSize:11,fontWeight:500,
+                background:fSin===s?(s==="Todos"?DARK:SIN_C2[s]):"#F1F4F8",
+                color:fSin===s?"#fff":"#64748B",
+              }}>{s==="Todos"?"Todos":SIN_LB2[s]}</button>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+            <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>ESCOPO</span>
+            <button onClick={()=>setFEsc("Todos")} style={{padding:"4px 12px",borderRadius:99,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:500,background:fEsc==="Todos"?DARK:"#F1F4F8",color:fEsc==="Todos"?"#fff":"#64748B"}}>Todos</button>
+            {escoposDisp.map(e=>(
+              <button key={e} onClick={()=>setFEsc(e)} style={{padding:"4px 12px",borderRadius:99,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:500,background:fEsc===e?DARK:"#F1F4F8",color:fEsc===e?"#fff":"#64748B"}}>{e}</button>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+            <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>ANALISTA</span>
+            {["Todos","MARIANA","WILDER","GIOVANNI","CARLA","DARLAN"].map(p=>(
+              <button key={p} onClick={()=>setFResp(p)} style={{
+                padding:"4px 12px",borderRadius:99,border:"none",cursor:"pointer",
+                fontFamily:"inherit",fontSize:11,fontWeight:500,
+                background:fResp===p?(COLORS2[p]||DARK):"#F1F4F8",
+                color:fResp===p?"#fff":"#64748B",
+              }}>{p==="Todos"?"Todos":p.charAt(0)+p.slice(1).toLowerCase()}</button>
+            ))}
+          </div>
+          <span style={{marginLeft:"auto",fontSize:12,color:"#94A3B8"}}>{filtered.length} clientes</span>
+        </div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {filtered.map(({grupo,rows,sin,avgReaj,avgPleito,avgAprov,totalAtual,totalPleito,totalDif})=>{
+            const filtRows = fResp==="Todos" ? rows : rows.filter(r=>r.responsavel===fResp);
+            return(
+              <div key={grupo} style={{background:"#fff",borderRadius:12,overflow:"hidden",
+                                        boxShadow:"0 1px 4px rgba(0,0,0,.07)",
+                                        borderLeft:`4px solid ${sin?SIN_C2[sin]:"#E2E8F0"}`}}>
+                <div style={{padding:"12px 18px",display:"flex",justifyContent:"space-between",
+                              alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                      <span style={{fontSize:14,fontWeight:700,color:DARK}}>{grupo}</span>
+                      {sin
+                        ?<span style={{fontSize:10,padding:"2px 8px",background:SIN_BG2[sin],
+                            color:SIN_C2[sin],borderRadius:99,fontWeight:600}}>{SIN_LB2[sin]}</span>
+                        :<span style={{fontSize:10,padding:"2px 8px",background:"#F1F4F8",
+                            color:"#94A3B8",borderRadius:99}}>Sem classificação</span>}
+                    </div>
+                    <div style={{fontSize:10,color:"#94A3B8"}}>
+                      {filtRows.length} atividades · {filtRows.filter(r=>r.status.toUpperCase().includes("APROVADO")).length} aprovadas
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                    {[
+                      {l:"Total Atual",   v:totalAtual>0?brl(totalAtual):"—"},
+                      {l:"Total Pleito",  v:totalPleito>0?brl(totalPleito):"—"},
+                      {l:"Ganho",         v:totalDif>0?brl(totalDif):"—",   c:"#16A34A"},
+                      {l:"% Reaj.",       v:avgReaj!=null?fmtPct2(avgReaj):"—"},
+                      {l:"% Pleito",      v:avgPleito!=null?fmtPct2(avgPleito):"—"},
+                      {l:"% Aceito",      v:avgAprov!=null?fmtPct2(avgAprov):"—", c:avgAprov!=null?"#16A34A":undefined},
+                    ].map(i=>(
+                      <div key={i.l} style={{textAlign:"right"}}>
+                        <div style={{fontSize:9,color:"#94A3B8",marginBottom:2,textTransform:"uppercase",letterSpacing:".04em"}}>{i.l}</div>
+                        <div style={{fontSize:13,fontWeight:600,color:i.c||DARK}}>{i.v}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* Tabela interna de unidades */}
+                {filtRows.length>0&&(
+                  <div style={{overflowX:"auto",borderTop:"1px solid #F1F4F8"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                      <thead>
+                        <tr style={{background:"#F8FAFC"}}>
+                          {["Unidade / Filial","Tipo","Rev.","Contrato Atual","Com Pleito","Ganho","% Reajuste","% Aceito","Status","Obs"].map(h=>(
+                            <th key={h} style={{textAlign:"left",padding:"7px 12px",fontSize:10,
+                              color:"#94A3B8",fontWeight:600,whiteSpace:"nowrap",
+                              borderBottom:"1px solid #E2E8F0"}}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtRows.sort((a,b)=>a.cliente.localeCompare(b.cliente)).map((r,i)=>{
+                          const isAprov=r.status.toUpperCase().includes("APROVADO");
+                          return(
+                            <tr key={i} style={{background:i%2===0?"#fff":"#FAFBFC",
+                                                borderTop:"1px solid #F1F4F8"}}>
+                              <td style={{padding:"7px 12px",fontWeight:500,color:DARK,whiteSpace:"nowrap"}}>{r.cliente}</td>
+                              <td style={{padding:"7px 12px"}}><TagP label={r.categoria} color={CAT_COM_C[r.categoria]||"#6B7280"}/></td>
+                              <td style={{padding:"7px 12px",color:"#94A3B8",textAlign:"center"}}>{r.isRevisao?"Rev":"—"}</td>
+                              <td style={{padding:"7px 12px",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.valAtual>0?brl(r.valAtual):"—"}</td>
+                              <td style={{padding:"7px 12px",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.valPleito>0?brl(r.valPleito):"—"}</td>
+                              <td style={{padding:"7px 12px",color:"#16A34A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.diferenca>0?brl(r.diferenca):"—"}</td>
+                              <td style={{padding:"7px 12px",color:"#64748B",whiteSpace:"nowrap"}}>{r.pctReaj>0?fmtPct2(r.pctReaj):"—"}</td>
+                              <td style={{padding:"7px 12px",color:"#16A34A",whiteSpace:"nowrap"}}>{r.aprovPct>0?fmtPct2(r.aprovPct):"—"}</td>
+                              <td style={{padding:"7px 12px"}}>
+                                <span style={{fontSize:10,fontWeight:500,padding:"2px 7px",borderRadius:99,
+                                  background:isAprov?"#DCFCE7":"#FEF9C3",
+                                  color:isAprov?"#16A34A":"#D97706",whiteSpace:"nowrap"}}>{r.status}</span>
+                              </td>
+                              <td style={{padding:"7px 12px"}}>
+                                {r.obs&&(
+                                  <button onClick={()=>setObsOpen(obsOpen===`${grupo}-${i}`?null:`${grupo}-${i}`)}
+                                    style={{fontSize:9,padding:"2px 7px",borderRadius:4,border:"1px solid #E2E8F0",
+                                      background:"#F8FAFC",color:"#64748B",cursor:"pointer",fontFamily:"inherit"}}>
+                                    OBS
+                                  </button>
+                                )}
+                                {obsOpen===`${grupo}-${i}`&&r.obs&&(
+                                  <div style={{position:"fixed",zIndex:9999,background:"#1E293B",color:"#F8FAFC",
+                                    padding:"10px 14px",borderRadius:8,fontSize:11,maxWidth:300,lineHeight:1.5,
+                                    boxShadow:"0 4px 16px rgba(0,0,0,.3)",top:"50%",left:"50%",
+                                    transform:"translate(-50%,-50%)",cursor:"pointer"}}
+                                    onClick={()=>setObsOpen(null)}>
+                                    {r.obs}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {!filtered.length&&<div style={{background:"#fff",borderRadius:12,padding:"48px 0",
+            textAlign:"center",color:"#94A3B8",fontSize:14}}>Nenhum cliente encontrado.</div>}
+        </div>
+      </div>
+    );
+  }
+
+  // ── HISTÓRICO ─────────────────────────────────────────────────────────────────
+  const filtHistorico = filterRows(data);
   return (
-    <div style={{background:"#fff",borderRadius:12,overflow:"hidden",
-                 boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
-      <div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-          <thead>
-            <tr style={{background:"#F8FAFC"}}>
-              {["Resp.","Mês","Semana","Cliente","Proposta","Tipo","Escopo","Val. Pleito","Val. Aprovado","Status","Rev."].map(h=>(
-                <th key={h} style={{textAlign:"left",padding:"8px 12px",fontSize:10,
-                  color:"#94A3B8",fontWeight:600,whiteSpace:"nowrap",borderBottom:"1px solid #E2E8F0"}}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filt.map((r,i)=>{
-              const isAprov=r.status.toUpperCase().includes("APROVADO");
-              const isRecus=r.status.toUpperCase().includes("RECUS");
-              const sc=isAprov?{text:"#16A34A",bg:"#DCFCE7"}:isRecus?{text:"#DC2626",bg:"#FEE2E2"}:{text:"#D97706",bg:"#FEF9C3"};
-              return(
-                <tr key={i} style={{background:i%2===0?"#fff":"#F8FAFC",borderTop:"1px solid #F1F4F8"}}>
-                  <td style={{padding:"7px 12px",borderLeft:`3px solid ${COR_P[r.pessoa]||"#E2E8F0"}`,
-                    color:COR_P[r.pessoa],fontWeight:600,whiteSpace:"nowrap"}}>{r.pessoa}</td>
-                  <td style={{padding:"7px 12px",color:"#94A3B8",whiteSpace:"nowrap"}}>{r.mes}</td>
-                  <td style={{padding:"7px 12px",color:"#94A3B8",whiteSpace:"nowrap",fontSize:10}}>{r.semana}</td>
-                  <td style={{padding:"7px 12px",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:DARK}}>{r.grupo}</td>
-                  <td style={{padding:"7px 12px",color:"#94A3B8",whiteSpace:"nowrap",fontFamily:"monospace",fontSize:10}}>{r.nProp}</td>
-                  <td style={{padding:"7px 12px",whiteSpace:"nowrap"}}>
-                    <span style={{fontSize:10,fontWeight:600,padding:"2px 7px",borderRadius:99,
-                      background:`${TIPO_COR_P[r.categoria]||"#6B7280"}18`,
-                      color:TIPO_COR_P[r.categoria]||"#6B7280"}}>{r.categoria}</span>
-                  </td>
-                  <td style={{padding:"7px 12px",color:"#94A3B8",whiteSpace:"nowrap",fontSize:10}}>{r.escopo||"—"}</td>
-                  <td style={{padding:"7px 12px",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.valPleito>0?brl(r.valPleito):"—"}</td>
-                  <td style={{padding:"7px 12px",color:"#16A34A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.valAprov>0?brl(r.valAprov):"—"}</td>
-                  <td style={{padding:"7px 12px"}}>
-                    <span style={{fontSize:10,fontWeight:500,padding:"2px 7px",borderRadius:99,
-                      background:sc.bg,color:sc.text,whiteSpace:"nowrap"}}>{r.status}</span>
-                  </td>
-                  <td style={{padding:"7px 12px",textAlign:"center",
-                    color:r.isRevisao?"#DC2626":"#94A3B8",fontSize:10}}>{r.isRevisao?"Rev":"—"}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {!filt.length&&<div style={{textAlign:"center",padding:"40px 0",color:"#94A3B8",fontSize:14}}>
-          Nenhum registro encontrado.</div>}
+    <div>
+      {filtros}
+      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+        <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+          <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>TIPO</span>
+          {["Todas",...CAT_COM].map(c=>(
+            <button key={c} onClick={()=>setFCat(c)} style={{
+              padding:"4px 12px",borderRadius:99,border:"none",cursor:"pointer",
+              fontFamily:"inherit",fontSize:11,fontWeight:500,
+              background:fCat===c?(CAT_COM_C[c]||DARK):"#F1F4F8",
+              color:fCat===c?"#fff":"#64748B",
+            }}>{c}</button>
+          ))}
+        </div>
+        <span style={{marginLeft:"auto",fontSize:12,color:"#94A3B8"}}>{filtHistorico.length} registros</span>
+      </div>
+      <div style={{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+            <thead>
+              <tr style={{background:"#F8FAFC"}}>
+                {["Mês","Sem.","Resp.","Escopo","Grupo","Unidade","Tipo","Rev.","Contrato Atual","Com Pleito","Ganho","% Reaj","% Aceito","Semáforo","Status","OBS"].map(h=>(
+                  <th key={h} style={{textAlign:"left",padding:"8px 10px",fontSize:10,
+                    color:"#94A3B8",fontWeight:600,whiteSpace:"nowrap",
+                    borderBottom:"1px solid #E2E8F0"}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtHistorico.map((r,i)=>{
+                const isAprov=r.status.toUpperCase().includes("APROVADO");
+                const isRecus=r.status.toUpperCase().includes("RECUS");
+                const sc=isAprov?{t:"#16A34A",bg:"#DCFCE7"}:isRecus?{t:"#DC2626",bg:"#FEE2E2"}:{t:"#D97706",bg:"#FEF9C3"};
+                return(
+                  <tr key={i} style={{background:i%2===0?"#fff":"#F8FAFC",borderTop:"1px solid #F1F4F8"}}>
+                    <td style={{padding:"7px 10px",color:"#94A3B8",whiteSpace:"nowrap"}}>{r.mes}</td>
+                    <td style={{padding:"7px 10px",color:"#94A3B8",whiteSpace:"nowrap",fontSize:10}}>{r.semana}</td>
+                    <td style={{padding:"7px 10px",color:COLORS2[r.responsavel],fontWeight:600,
+                      whiteSpace:"nowrap",borderLeft:`3px solid ${COLORS2[r.responsavel]||"#E2E8F0"}`}}>
+                      {r.responsavel.charAt(0)+r.responsavel.slice(1).toLowerCase()}
+                    </td>
+                    <td style={{padding:"7px 10px",color:"#94A3B8",whiteSpace:"nowrap",fontSize:10}}>{r.escopo||"—"}</td>
+                    <td style={{padding:"7px 10px",maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:DARK}}>{r.grupoCliente}</td>
+                    <td style={{padding:"7px 10px",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:500}}>{r.cliente}</td>
+                    <td style={{padding:"7px 10px"}}><TagP label={r.categoria} color={CAT_COM_C[r.categoria]||"#6B7280"}/></td>
+                    <td style={{padding:"7px 10px",textAlign:"center",color:r.isRevisao?"#DC2626":"#94A3B8"}}>{r.isRevisao?"Rev":"—"}</td>
+                    <td style={{padding:"7px 10px",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.valAtual>0?brl(r.valAtual):"—"}</td>
+                    <td style={{padding:"7px 10px",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.valPleito>0?brl(r.valPleito):"—"}</td>
+                    <td style={{padding:"7px 10px",color:"#16A34A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.diferenca>0?brl(r.diferenca):"—"}</td>
+                    <td style={{padding:"7px 10px",color:"#64748B",whiteSpace:"nowrap"}}>{r.pctReaj>0?fmtPct2(r.pctReaj):"—"}</td>
+                    <td style={{padding:"7px 10px",color:"#16A34A",whiteSpace:"nowrap"}}>{r.aprovPct>0?fmtPct2(r.aprovPct):"—"}</td>
+                    <td style={{padding:"7px 10px"}}>
+                      {r.sinalizacao&&(
+                        <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          <div style={{width:7,height:7,borderRadius:99,background:SIN_C2[r.sinalizacao]}}/>
+                          <span style={{fontSize:10,color:SIN_C2[r.sinalizacao],fontWeight:500}}>{SIN_LB2[r.sinalizacao]}</span>
+                        </div>
+                      )}
+                    </td>
+                    <td style={{padding:"7px 10px"}}>
+                      <span style={{fontSize:10,fontWeight:500,padding:"2px 7px",borderRadius:99,
+                        background:sc.bg,color:sc.t,whiteSpace:"nowrap"}}>{r.status}</span>
+                    </td>
+                    <td style={{padding:"7px 10px",maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",
+                      whiteSpace:"nowrap",fontSize:10,color:"#94A3B8"}}
+                      title={r.obs}>{r.obs||"—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {!filtHistorico.length&&<div style={{textAlign:"center",padding:"40px 0",color:"#94A3B8",fontSize:14}}>
+            Nenhum registro encontrado.</div>}
+        </div>
       </div>
     </div>
   );
 }
 
 // ─── APP PRINCIPAL ────────────────────────────────────────────────────────────
-const FILTROS_INIT = () => ({
-  pessoa:new Set(),mes:new Set(),semana:new Set(),
-  escopo:new Set(),sin:new Set(),cat:new Set(),status:new Set()
-});
-
 export default function App() {
   const [gData,   setGData]   = useState([]);
   const [pData,   setPData]   = useState([]);
@@ -862,7 +1340,6 @@ export default function App() {
   const [secao,   setSecao]   = useState("gerencial");
   const [subPag,  setSubPag]  = useState("visao");
   const [menuOpen,setMenuOpen]= useState(false);
-  const [filtroP, setFiltroP] = useState(FILTROS_INIT);
 
   const buscarDados = useCallback(async()=>{
     setLoading(true);setErro(null);
@@ -872,7 +1349,7 @@ export default function App() {
         fetchCSV("1622380363"),
       ]);
       setGData(processGerencial(rawG));
-      setPData(processProd(rawP));
+      setPData(rawP); // raw rows — processed inside SecaoProdutividade
       setUltimaAt(new Date());
     } catch(e) { setErro(e.message); }
     finally { setLoading(false); }
@@ -884,6 +1361,7 @@ export default function App() {
     { id:"gerencial",     label:"Gerencial",     subs:[] },
     { id:"produtividade", label:"Produtividade",  subs:[
       {id:"visao",    label:"Visão Geral"},
+      {id:"esforco",  label:"Esforço"},
       {id:"clientes", label:"Por Cliente"},
       {id:"historico",label:"Histórico"},
     ]},
@@ -972,10 +1450,7 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Filtros Produtividade no menu */}
-        {menuOpen&&secao==="produtividade"&&(
-          <FiltroLateral data={pData} filtros={filtroP} setFiltros={setFiltroP}/>
-        )}
+
 
         {/* Última atualização */}
         {menuOpen&&ultimaAt&&(
@@ -1033,7 +1508,7 @@ export default function App() {
             <SecaoGerencial data={gData} setData={setGData}/>
           )}
           {!loading&&!erro&&secao==="produtividade"&&(
-            <SecaoProdutividade data={pData} subPag={subPag} filtros={filtroP}/>
+            <SecaoProdutividade rawData={pData} subPag={subPag} setSubPag={setSubPag}/>
           )}
         </div>
       </div>
