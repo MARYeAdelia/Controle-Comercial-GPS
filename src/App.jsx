@@ -34,6 +34,26 @@ const MENU_W_OPEN  = 220;
 const MENU_W_CLOSE = 48;
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
+const matchPessoa = s => EQUIPE.find(p => (s||"").toUpperCase().includes(p.toUpperCase())) || null;
+
+const matchSin = v => {
+  const s = (v||"").toString().toUpperCase();
+  if (s.includes("VERDE"))   return "verde";
+  if (s.includes("AMARELO")) return "amarelo";
+  if (s.includes("VERM"))    return "vermelho";
+  return null;
+};
+
+const matchCatP = (ativ, tipo) => {
+  const c = ((ativ||"")+" "+(tipo||"")).toUpperCase();
+  if (c.includes("REAJUSTE")||c.includes("NOTIFICAÇ")||c.includes("CARTA DE REAJUSTE")) return "Reajuste";
+  if (c.includes("RENOVAÇ")) return "Renovação";
+  if (c.includes("UP-SELLING")||c.includes("UP SELLING")||c.includes("AUMENTO DE ESCOPO")) return "Up Selling";
+  if (c.includes("DEFESA DE TERRIT")) return "Defesa de Território";
+  if ((c.includes("ALTERAÇ")&&c.includes("ESCOPO"))||c.includes("REVISÃO DE ESCOPO")||c.includes("ADITIVO CONTRATUAL")) return "Alteração de Escopo";
+  if (c.includes("BID")||c.includes("COTAÇ")) return "BID/Cotação";
+  return "Outros";
+};
 const brl = v => (!v&&v!==0)?"—"
   : new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0}).format(v);
 const num = v => { const n=parseFloat(String(v).replace(/[R$\s.]/g,"").replace(",",".")); return isNaN(n)?0:n; };
@@ -126,8 +146,9 @@ const processGerencial = raw => {
   return raw.map((r, i) => {
     const grupo  = getByIdx(r, idxGrupo).toString().trim();
     const cr     = getByIdx(r, idxCR).toString().trim();
-    // Ignora linhas sem grupo ou CR válido (número ou texto simples)
-    if (!grupo || !cr || cr.length > 20) return null;
+    // Ignora linhas sem grupo válido ou CR inválido
+    if (!grupo || grupo.length > 60) return null;
+    if (!cr || cr.length > 15 || !/^\d/.test(cr.trim())) return null;
     const statusReal = getByIdx(r, idxStatus).toString().trim() || "N/A";
     const mesVig     = getByIdx(r, idxMes).toString().trim();
     const inicioNeg  = parseData(getByIdx(r, idxInicio));
