@@ -56,7 +56,18 @@ const matchCatP = (ativ, tipo) => {
 };
 const brl = v => (!v&&v!==0)?"—"
   : new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0}).format(v);
-const num = v => { const n=parseFloat(String(v).replace(/[R$\s.]/g,"").replace(",",".")); return isNaN(n)?0:n; };
+const num = v => {
+  if (v==null||v==="") return 0;
+  const s = String(v).trim();
+  // Currency: "R$ 1.234,56" -> strip R$, spaces, thousand dots, convert comma
+  // Decimal: "0.0756" -> keep as is
+  const cleaned = s.replace(/R\$\s*/g,"").replace(/\s/g,"");
+  // If it has comma as decimal separator (Brazilian): "1.234,56"
+  if (/\d\.\d{3},/.test(cleaned) || /,\d{1,2}$/.test(cleaned)) {
+    return parseFloat(cleaned.replace(/\./g,"").replace(",",".")) || 0;
+  }
+  return parseFloat(cleaned) || 0;
+};
 const pctFmt = v => {
   if (!v||v===""||v==="0") return "—";
   const n = parseFloat(v);
@@ -671,8 +682,10 @@ const fmtPct2 = v => {
   if (v==null||v===""||isNaN(v)) return "—";
   const n = parseFloat(v);
   if (n===0) return "—";
-  // Values stored as decimals (0.0756 = 7.56%) — multiply by 100
-  return `${(n*100).toFixed(2)}%`;
+  // If value > 1, it's already in % form (e.g. 6.86 = 6.86%)
+  // If value <= 1, it's decimal (e.g. 0.0686 = 6.86%)
+  const pct = n > 1 ? n : n * 100;
+  return `${pct.toFixed(2)}%`;
 };
 
 // Reprocessa dados de produtividade com colunas corretas
@@ -1155,8 +1168,20 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
                     ))}
                   </div>
                 </div>
-                {/* Tabela interna de unidades */}
-                {filtRows.length>0&&(
+                {/* Tabela interna de unidades — uma linha por unidade (última revisão) */}
+                {filtRows.length>0&&(()=>{
+                  // Agrupa por unidade, pega última revisão
+                  const byUnit = {};
+                  filtRows.forEach(r => {
+                    const key = (r.unidade||r.cliente||"").trim();
+                    if (!byUnit[key]) byUnit[key] = {rows:[],last:null};
+                    byUnit[key].rows.push(r);
+                    if (!byUnit[key].last||r.nRev>byUnit[key].last.nRev) byUnit[key].last=r;
+                  });
+                  const unitRows = Object.values(byUnit).map(({rows,last})=>({
+                    ...last, totalRevs: rows.filter(x=>x.nRev>0).length
+                  })).sort((a,b)=>(a.unidade||"").localeCompare(b.unidade||""));
+                  return (
                   <div style={{overflowX:"auto",borderTop:"1px solid #F1F4F8"}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
                       <thead>
@@ -1169,14 +1194,16 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {filtRows.sort((a,b)=>(a.unidade||a.cliente||"").localeCompare(b.unidade||b.cliente||"")).map((r,i)=>{
+                        {unitRows.map((r,i)=>{
                           const isAprov=r.status.toUpperCase().includes("APROVADO");
                           return(
                             <tr key={i} style={{background:i%2===0?"#fff":"#FAFBFC",
                                                 borderTop:"1px solid #F1F4F8"}}>
                               <td style={{padding:"7px 12px",fontWeight:500,color:DARK,whiteSpace:"nowrap"}}>{r.unidade}</td>
                               <td style={{padding:"7px 12px"}}><TagP label={r.tipo||r.categoria} color={CAT_COM_C[r.categoria]||"#6B7280"}/></td>
-                              <td style={{padding:"7px 12px",color:"#94A3B8",textAlign:"center"}}>{r.nRev||0}</td>
+                              <td style={{padding:"7px 12px",textAlign:"center",
+                                color:r.totalRevs>0?"#7C3AED":"#94A3B8",fontWeight:r.totalRevs>0?600:400}}>
+                                {r.totalRevs||0}</td>
                               <td style={{padding:"7px 12px",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.valAtual>0?brl(r.valAtual):"—"}</td>
                               <td style={{padding:"7px 12px",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.valPleito>0?brl(r.valPleito):"—"}</td>
                               <td style={{padding:"7px 12px",color:"#16A34A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{r.diferenca>0?brl(r.diferenca):"—"}</td>
@@ -1211,7 +1238,8 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
                       </tbody>
                     </table>
                   </div>
-                )}
+                  );
+                })()}
               </div>
             );
           })}
@@ -1226,18 +1254,24 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
   // Histórico: uma linha por unidade (última revisão) com contagem de revisões
   const filtHistorico = (() => {
     const all = filterRows(data);
-    // Group by grupo+unidade, keep last revision, count revisions
     const by = {};
     all.forEach(r => {
-      const key = `${r.grupoCliente}||${r.unidade}||${r.nProposta.replace(/\s*(rev\.?\s*\d+|\.\s*\d+)\s*$/i,"")}`;
-      if (!by[key]) by[key] = {rows:[], last:null};
+      // Chave simples: grupo + unidade (uma linha por unidade)
+      const key = `${(r.grupoCliente||"").trim()}||${(r.unidade||"").trim()}`;
+      if (!by[key]) by[key] = { rows:[], last:null };
       by[key].rows.push(r);
       if (!by[key].last || r.nRev > by[key].last.nRev) by[key].last = r;
     });
-    return Object.values(by).map(({rows, last}) => ({
-      ...last,
-      totalRevisoes: rows.filter(r=>r.isRevisao).length,
-    })).sort((a,b)=>(a.grupoCliente||"").localeCompare(b.grupoCliente||"")||(a.unidade||"").localeCompare(b.unidade||""));
+    return Object.values(by)
+      .filter(x => x.last)
+      .map(({rows, last}) => ({
+        ...last,
+        totalRevisoes: rows.filter(r => r.nRev > 0).length,
+      }))
+      .sort((a,b) =>
+        (a.grupoCliente||"").localeCompare(b.grupoCliente||"") ||
+        (a.unidade||"").localeCompare(b.unidade||"")
+      );
   })();
   return (
     <div>
