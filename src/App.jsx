@@ -692,7 +692,10 @@ const fmtPct2 = v => {
 const processProdFull = raw => {
   if (!raw?.length) return [];
   const headers = Object.keys(raw[0]);
-  const col = (...kws) => headers.find(k => kws.some(kw => k.toUpperCase().replace(/\s+/g," ").trim().includes(kw.toUpperCase()))) || null;
+  const normalize = s => s.toUpperCase().replace(/\s+/g," ").trim()
+    .replace(/[ÁÀÃÂ]/g,"A").replace(/[ÉÊ]/g,"E").replace(/[Í]/g,"I")
+    .replace(/[ÓÕÔ]/g,"O").replace(/[Ú]/g,"U").replace(/[Ç]/g,"C");
+  const col = (...kws) => headers.find(k => kws.some(kw => normalize(k).includes(normalize(kw)))) || null;
   const val = (r, ...kws) => { const k=col(...kws); return k ? (r[k]??"") : ""; };
 
   // Agrupa por proposta base para pegar última revisão
@@ -931,21 +934,21 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
                   ))}
                 </div>
                 <div style={{borderTop:"1px solid #F1F4F8",paddingTop:10}}>
-                  <div style={{fontSize:9,color:"#94A3B8",marginBottom:6,textTransform:"uppercase",letterSpacing:".06em"}}>Por Tipo</div>
-                  {CAT_COM.map(cat=>{
-                    const d=sp.filter(r=>r.categoria===cat);
+                  <div style={{fontSize:9,color:"#94A3B8",marginBottom:8,textTransform:"uppercase",letterSpacing:".06em"}}>Por Tipo</div>
+                  {[...new Set(sp.map(r=>r.tipo).filter(Boolean))].sort().map(tipo=>{
+                    const d = sp.filter(r=>r.tipo===tipo);
                     if(!d.length) return null;
-                    const dif=d.reduce((s,r)=>s+r.diferenca,0);
                     return(
-                      <div key={cat} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                        <div style={{display:"flex",alignItems:"center",gap:5}}>
-                          <div style={{width:6,height:6,borderRadius:99,background:CAT_COM_C[cat]}}/>
-                          <span style={{fontSize:11,color:"#64748B"}}>{cat}</span>
+                      <div key={tipo} style={{display:"flex",justifyContent:"space-between",
+                                              alignItems:"center",marginBottom:6,padding:"3px 0"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <div style={{width:7,height:7,borderRadius:99,
+                                       background:TIPO_COR_P[tipo]||CAT_COM_C[tipo]||cor}}/>
+                          <span style={{fontSize:11,color:"#64748B"}}>{tipo}</span>
                         </div>
-                        <div style={{display:"flex",gap:8}}>
-                          <span style={{fontSize:11,color:cor}}>{d.length}x</span>
-                          <span style={{fontSize:11,color:"#16A34A",minWidth:60,textAlign:"right"}}>{dif>0?brl(dif):"—"}</span>
-                        </div>
+                        <span style={{fontSize:12,fontWeight:600,color:cor,minWidth:24,textAlign:"right"}}>
+                          {d.length}×
+                        </span>
                       </div>
                     );
                   })}
