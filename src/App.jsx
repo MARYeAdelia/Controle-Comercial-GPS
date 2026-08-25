@@ -907,14 +907,14 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
                   <div>
                     <div style={{fontSize:10,color:"#94A3B8",marginBottom:2}}>Analista</div>
-                    <div style={{fontSize:16,fontWeight:700,color:cor}}>{p.charAt(0)+p.slice(1).toLowerCase()}</div>
+                    <div style={{fontSize:16,fontWeight:700,color:cor}}>{p}</div>
                     <div style={{fontSize:10,color:"#94A3B8",marginTop:2}}>
                       {sp.length} atividades · {revP.length} revisões
                     </div>
                   </div>
-                  <div style={{background:"#DCFCE7",borderRadius:8,padding:"4px 10px",textAlign:"center"}}>
-                    <div style={{fontSize:16,fontWeight:700,color:"#16A34A"}}>{aprov.length}</div>
-                    <div style={{fontSize:9,color:"#16A34A"}}>aprovados</div>
+                  <div style={{textAlign:"right",fontSize:11}}>
+                    <div style={{color:"#16A34A"}}>✓ {aprov.length} aprovados</div>
+                    <div style={{color:"#94A3B8",marginTop:2}}>{revP.length} revisões</div>
                   </div>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:12}}>
@@ -959,12 +959,12 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
         <div style={{fontSize:11,fontWeight:600,letterSpacing:".06em",textTransform:"uppercase",
                      color:"#94A3B8",marginBottom:12}}>Liderança</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14,marginBottom:24}}>
-          {["CARLA","DARLAN"].map(p=>{
+          {["Carla","Darlan"].map(p=>{
             const sp   = base.filter(r=>r.responsavel===p);
             const revP = revs.filter(r=>r.responsavel===p);
             const aprov= sp.filter(r=>r.status.toUpperCase().includes("APROVADO"));
-            const cor  = COLORS2[p];
-            const porCat = CAT_COM.map(cat=>({cat,n:sp.filter(r=>r.categoria===cat).length})).filter(x=>x.n>0);
+            const cor  = COR_P[p]||"#D97706";
+            const porCat = [...new Set(sp.map(r=>r.tipo).filter(Boolean))].map(cat=>({cat,n:sp.filter(r=>r.tipo===cat).length})).filter(x=>x.n>0).sort((a,b)=>b.n-a.n);
             return (
               <div key={p} style={{background:`${cor}08`,borderRadius:12,padding:18,
                                     borderTop:`3px solid ${cor}`,boxShadow:"0 1px 4px rgba(0,0,0,.07)",
@@ -972,7 +972,7 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
                   <div>
                     <div style={{fontSize:10,color:"#94A3B8",marginBottom:2}}>Liderança</div>
-                    <div style={{fontSize:16,fontWeight:700,color:cor}}>{p.charAt(0)+p.slice(1).toLowerCase()}</div>
+                    <div style={{fontSize:16,fontWeight:700,color:cor}}>{p}</div>
                     <div style={{fontSize:10,color:"#94A3B8",marginTop:2}}>{sp.length} interações · {revP.length} revisões</div>
                   </div>
                   <div style={{background:"#DCFCE7",borderRadius:8,padding:"4px 10px",textAlign:"center"}}>
@@ -996,7 +996,7 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
                 </div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
                   {porCat.map(({cat,n})=>(
-                    <TagP key={cat} label={`${cat} ${n}×`} color={CAT_COM_C[cat]||"#6B7280"}/>
+                    <TagP key={cat} label={`${cat} ${n}×`} color={CAT_COM_C[cat]||TIPO_COR_P[cat]||"#6B7280"}/>
                   ))}
                 </div>
               </div>
@@ -1081,17 +1081,17 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
 
         {/* Por analista */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
-          {["MARIANA","WILDER","GIOVANNI"].map(p=>{
+          {["Mariana","Wilder","Giovanni"].map(p=>{
             const rows  = applyAll(data).filter(r=>r.responsavel===p);
             const ents  = contarEnt(rows);
-            const cor   = COLORS2[p];
+            const cor   = COR_P[p]||"#7C3AED";
             return(
               <div key={p} style={{background:`${cor}08`,borderRadius:12,padding:18,
                                     borderTop:`3px solid ${cor}`,boxShadow:"0 1px 4px rgba(0,0,0,.07)",
                                     border:`1px solid ${cor}20`}}>
                 <div style={{marginBottom:14}}>
                   <div style={{fontSize:10,color:"#94A3B8",marginBottom:2}}>Analista</div>
-                  <div style={{fontSize:16,fontWeight:700,color:cor}}>{p.charAt(0)+p.slice(1).toLowerCase()}</div>
+                  <div style={{fontSize:16,fontWeight:700,color:cor}}>{p}</div>
                   <div style={{fontSize:10,color:"#94A3B8",marginTop:2}}>
                     {rows.filter(r=>!r.isRevisao).length} atividades · {rows.filter(r=>r.isRevisao).length} revisões
                   </div>
