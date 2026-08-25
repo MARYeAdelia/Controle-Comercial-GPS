@@ -898,11 +898,12 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
         <div style={{fontSize:11,fontWeight:600,letterSpacing:".06em",textTransform:"uppercase",
                      color:"#94A3B8",marginBottom:12}}>Analistas</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:24}}>
-          {["MARIANA","WILDER","GIOVANNI"].map(p => {
-            const sp    = base.filter(r=>r.responsavel===p);
-            const revP  = revs.filter(r=>r.responsavel===p);
-            const aprov = sp.filter(r=>r.status.toUpperCase().includes("APROVADO"));
-            const cor   = COLORS2[p];
+          {["Mariana","Wilder","Giovanni"].map(p => {
+            const allP  = applyAll(data).filter(r=>r.responsavel===p);
+            const sp    = allP.filter(r=>r.isUltima);
+            const revP  = allP.filter(r=>r.isRevisao);
+            const aprov = allP.filter(r=>r.status.toUpperCase().includes("APROVADO"));
+            const cor   = COR_P[p]||"#7C3AED";
             return (
               <div key={p} style={{background:`${cor}08`,borderRadius:12,padding:18,
                                     borderTop:`3px solid ${cor}`,boxShadow:"0 1px 4px rgba(0,0,0,.07)",
@@ -979,9 +980,9 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
                     <div style={{fontSize:16,fontWeight:700,color:cor}}>{p}</div>
                     <div style={{fontSize:10,color:"#94A3B8",marginTop:2}}>{allP.length} interações · {revP.length} revisões</div>
                   </div>
-                  <div style={{background:"#DCFCE7",borderRadius:8,padding:"4px 10px",textAlign:"center"}}>
-                    <div style={{fontSize:16,fontWeight:700,color:"#16A34A"}}>{aprov.length}</div>
-                    <div style={{fontSize:9,color:"#16A34A"}}>aprovados</div>
+                  <div style={{textAlign:"right",fontSize:11}}>
+                    <div style={{color:"#16A34A"}}>✓ {aprov.length} aprovados</div>
+                    <div style={{color:"#94A3B8",marginTop:2}}>{revP.length} revisões</div>
                   </div>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:10}}>
