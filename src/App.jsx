@@ -768,14 +768,14 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
   const revs  = data.filter(r => r.isRevisao);
 
   // Opções de filtro derivadas dos dados
-  const mesesDisp   = ORDEM_MES.filter(m => data.some(r => r.mes === m));
+  const mesesDisp   = ORDEM_MES.filter(m => data.some(r => r.mes && m.toUpperCase().startsWith(r.mes.toUpperCase().substring(0,3))));
   const semanasDisp = [...new Set(data.map(r=>r.semana).filter(Boolean))].sort();
   const escoposDisp = [...new Set(data.map(r=>r.escopo).filter(Boolean))].sort();
   const tiposDisp   = [...new Set(data.map(r=>r.tipo).filter(Boolean))].sort();
 
   const applyAll = rows => {
     let r = rows;
-    if (fMes  !== "Todos") r = r.filter(x => x.mes === fMes);
+    if (fMes  !== "Todos") r = r.filter(x => x.mes && fMes.toUpperCase().startsWith(x.mes.toUpperCase().substring(0,3)));
     if (fSem  !== "Todas") r = r.filter(x => x.semana === fSem);
     if (fResp !== "Todos") r = r.filter(x => x.responsavel === fResp);
     if (fEsc  !== "Todos") r = r.filter(x => x.escopo === fEsc);
@@ -788,7 +788,7 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
   };
   const applyMesSem = rows => {
     let r = rows;
-    if (fMes !== "Todos") r = r.filter(x => x.mes === fMes);
+    if (fMes !== "Todos") r = r.filter(x => x.mes && fMes.toUpperCase().startsWith(x.mes.toUpperCase().substring(0,3)));
     if (fSem !== "Todas") r = r.filter(x => x.semana === fSem);
     return r;
   };
@@ -852,38 +852,16 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
 
     return (
       <div>
-        {/* Filtros simplificados visão geral */}
-        <div style={{background:"#fff",borderRadius:10,padding:"10px 14px",marginBottom:16,
-                     display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",
-                     boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>
-          <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-            <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>STATUS</span>
-            {["Todos","Aprovado","Em Negociação"].map(s=>(
-              <PillP key={s} label={s} active={fStat===s} onClick={()=>setFStat(s)}/>
-            ))}
-          </div>
-          <div style={{width:1,height:20,background:"#E2E8F0"}}/>
-          <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-            <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>MÊS</span>
-            <PillP label="Todos" active={fMes==="Todos"} onClick={()=>setFMes("Todos")}/>
-            {mesesDisp.map(m=><PillP key={m} label={m} active={fMes===m} onClick={()=>setFMes(m)}/>)}
-          </div>
-          <div style={{width:1,height:20,background:"#E2E8F0"}}/>
-          <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-            <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>SEMANA</span>
-            <PillP label="Todas" active={fSem==="Todas"} onClick={()=>setFSem("Todas")}/>
-            {semanasDisp.map(s=><PillP key={s} label={s} active={fSem===s} onClick={()=>setFSem(s)}/>)}
-          </div>
-        </div>
+
 
         {/* KPIs */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:20}}>
           {[
-            {l:"Propostas",       v:data.filter(r=>!r.isRevisao&&(fMes==="Todos"||r.mes===fMes)).length},
-            {l:"Revisões",        v:data.filter(r=>r.isRevisao&&(fMes==="Todos"||r.mes===fMes)).length},
-            {l:"Valor Atual",     v:brl(base.reduce((s,r)=>s+r.valAtual,0))},
+            {l:"Propostas",       v:applyAll(data).filter(r=>!r.isRevisao).length},
+            {l:"Revisões",        v:applyAll(data).filter(r=>r.isRevisao).length},
+            {l:"Contrato Atual",  v:brl(base.reduce((s,r)=>s+r.valAtual,0))},
             {l:"Valor c/ Pleito", v:brl(base.reduce((s,r)=>s+r.valPleito,0))},
-            {l:"Ganho Potencial", v:brl(base.reduce((s,r)=>s+r.diferenca,0)), hl:true},
+            {l:"Diferença",       v:brl(base.reduce((s,r)=>s+r.diferenca,0)), hl:true},
           ].map(i=>(
             <div key={i.l} style={{background:i.hl?"#F0FDF4":"#F8FAFC",borderRadius:10,
                                     padding:"14px 16px",boxShadow:"0 1px 4px rgba(0,0,0,.07)",
@@ -1129,37 +1107,8 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
     const filtered = fSin==="Todos" ? cStats : cStats.filter(c=>c.sin===fSin);
     return (
       <div>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,flexWrap:"wrap"}}>
-          <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-            <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>SEMÁFORO</span>
-            {["Todos","verde","amarelo","vermelho"].map(s=>(
-              <button key={s} onClick={()=>setFSin(s)} style={{
-                padding:"4px 12px",borderRadius:99,border:"none",cursor:"pointer",
-                fontFamily:"inherit",fontSize:11,fontWeight:500,
-                background:fSin===s?(s==="Todos"?DARK:SIN_C2[s]):"#F1F4F8",
-                color:fSin===s?"#fff":"#64748B",
-              }}>{s==="Todos"?"Todos":SIN_LB2[s]}</button>
-            ))}
-          </div>
-          <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-            <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>ESCOPO</span>
-            <button onClick={()=>setFEsc("Todos")} style={{padding:"4px 12px",borderRadius:99,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:500,background:fEsc==="Todos"?DARK:"#F1F4F8",color:fEsc==="Todos"?"#fff":"#64748B"}}>Todos</button>
-            {escoposDisp.map(e=>(
-              <button key={e} onClick={()=>setFEsc(e)} style={{padding:"4px 12px",borderRadius:99,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:500,background:fEsc===e?DARK:"#F1F4F8",color:fEsc===e?"#fff":"#64748B"}}>{e}</button>
-            ))}
-          </div>
-          <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-            <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>ANALISTA</span>
-            {["Todos","MARIANA","WILDER","GIOVANNI","CARLA","DARLAN"].map(p=>(
-              <button key={p} onClick={()=>setFResp(p)} style={{
-                padding:"4px 12px",borderRadius:99,border:"none",cursor:"pointer",
-                fontFamily:"inherit",fontSize:11,fontWeight:500,
-                background:fResp===p?(COLORS2[p]||DARK):"#F1F4F8",
-                color:fResp===p?"#fff":"#64748B",
-              }}>{p==="Todos"?"Todos":p.charAt(0)+p.slice(1).toLowerCase()}</button>
-            ))}
-          </div>
-          <span style={{marginLeft:"auto",fontSize:12,color:"#94A3B8"}}>{filtered.length} clientes</span>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+          <span style={{fontSize:12,color:"#94A3B8"}}>{filtered.length} clientes</span>
         </div>
 
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -1271,19 +1220,8 @@ function SecaoProdutividade({ rawData, subPag, setSubPag, filtros }) {
   const filtHistorico = filterRows(data);
   return (
     <div>
-      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
-        <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-          <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>TIPO</span>
-          {["Todas",...CAT_COM].map(c=>(
-            <button key={c} onClick={()=>setFCat(c)} style={{
-              padding:"4px 12px",borderRadius:99,border:"none",cursor:"pointer",
-              fontFamily:"inherit",fontSize:11,fontWeight:500,
-              background:fCat===c?(CAT_COM_C[c]||DARK):"#F1F4F8",
-              color:fCat===c?"#fff":"#64748B",
-            }}>{c}</button>
-          ))}
-        </div>
-        <span style={{marginLeft:"auto",fontSize:12,color:"#94A3B8"}}>{filtHistorico.length} registros</span>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+        <span style={{fontSize:12,color:"#94A3B8"}}>{filtHistorico.length} registros</span>
       </div>
       <div style={{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.07)"}}>
         <div style={{overflowX:"auto"}}>
@@ -1410,7 +1348,7 @@ export default function App() {
       {/* ── MENU LATERAL ────────────────────────────────────────────────────── */}
       <div style={{
         width: menuOpen?MENU_W_OPEN:MENU_W_CLOSE,
-        minHeight:"100vh",background:MENU_BG,
+        height:"100vh",background:MENU_BG,
         display:"flex",flexDirection:"column",
         position:"fixed",top:0,left:0,zIndex:100,
         transition:"width .2s",overflow:"hidden",
@@ -1482,7 +1420,7 @@ export default function App() {
         {/* Filtros Produtividade no menu */}
         {menuOpen&&secao==="produtividade"&&pData.length>0&&(()=>{
           const procData = processProdFull(pData);
-          const mesesDisp  = ORDEM_MES.filter(m=>procData.some(r=>r.mes===m));
+          const mesesDisp  = ORDEM_MES.filter(m=>procData.some(r=>r.mes&&m.toUpperCase().startsWith(r.mes.toUpperCase().substring(0,3))));
           const semanasDisp= [...new Set(procData.map(r=>r.semana).filter(Boolean))].sort();
           const escoposDisp= [...new Set(procData.map(r=>r.escopo).filter(Boolean))].sort();
           const tiposDisp  = [...new Set(procData.map(r=>r.tipo).filter(Boolean))].sort();
@@ -1506,8 +1444,9 @@ export default function App() {
           );
 
           return (
-            <div style={{flex:1,overflowY:"auto",padding:"14px 12px",
-                         borderTop:"1px solid rgba(255,255,255,.07)"}}>
+            <div style={{overflowY:"auto",padding:"14px 12px",
+                         borderTop:"1px solid rgba(255,255,255,.07)",
+                         flex:1, minHeight:0}}>
               <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,.25)",
                            textTransform:"uppercase",letterSpacing:".1em",marginBottom:14}}>
                 Filtros
